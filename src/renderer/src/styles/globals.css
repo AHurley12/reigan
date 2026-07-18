@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-void:        #06080F;
+  --bg-surface:     #0C1017;
+  --bg-elevated:    #141922;
+  --bg-subtle:      #1A2030;
+
+  --reigan-primary:   #7C3AED;
+  --reigan-secondary: #00D4FF;
+  --reigan-gradient:  linear-gradient(135deg, #7C3AED 0%, #00D4FF 100%);
+  --reigan-glow:      0 0 20px rgba(124, 58, 237, 0.3);
+  --reigan-glow-cyan: 0 0 20px rgba(0, 212, 255, 0.3);
+
+  --active:    #10B981;
+  --alert:     #F59E0B;
+  --critical:  #EF4444;
+  --info:      #3B82F6;
+
+  --text-primary:    #E8ECF4;
+  --text-secondary:  #8B95A8;
+  --text-muted:      #4A5568;
+  --text-kanji:      #6E7A91;
+  --text-accent:     #A78BFA;
+
+  --border:        rgba(255, 255, 255, 0.06);
+  --border-hover:  rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(124, 58, 237, 0.4);
+
+  --font-display: 'Space Grotesk', 'Noto Sans JP', sans-serif;
+  --font-body:    'Inter', 'Noto Sans JP', sans-serif;
+  --font-mono:    'JetBrains Mono', 'Noto Sans JP', monospace;
+  --font-kanji:   'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --radius-full: 50%;
+
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  --nav-width: 54px;
+  --titlebar-height: 38px;
+  --inputbar-height: 64px;
+  --orb-size: 120px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--reigan-secondary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+ruby {
+  ruby-align: center;
+}
+ruby rt {
+  font-size: 0.55em;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+}
