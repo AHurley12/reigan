@@ -7,8 +7,12 @@ export const DEFAULT_SETTINGS = {
   anthropicApiKey: '',
   japaneseLevel: 1 as const,
   voiceEnabled: false,
-  particleCount: 1000,
+  particleCount: 8000,
   theme: 'dark' as const,
+  deepgramApiKey: '',
+  elevenLabsApiKey: '',
+  voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam
+  pushToTalk: true,
 };
 
 export const NAV_ITEMS = [

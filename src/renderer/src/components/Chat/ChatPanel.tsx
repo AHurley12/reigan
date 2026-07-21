@@ -1,17 +1,13 @@
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { useChatStore } from '../../stores/chatStore'
-import { useAppStore } from '../../stores/appStore'
-import { useIPC } from '../../hooks/useIPC'
 
 export function ChatPanel() {
-  const { messages, isStreaming, conversationId, addUserMessage, startStreaming, appendToken, finalizeMessage, setConversationId } = useChatStore()
-  const { setReiganState } = useAppStore()
-  const ipc = useIPC()
+  const messages = useChatStore((s) => s.messages)
+  const sendMessage = useChatStore((s) => s.sendMessage)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
-  const streamingIdRef = useRef<string | null>(null)
 
   // Auto-scroll
   useEffect(() => {
@@ -19,43 +15,6 @@ export function ChatPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
-
-  // Register stream listener
-  useEffect(() => {
-    if (!ipc) return
-    const unsub = ipc.onStream((data) => {
-      if (!streamingIdRef.current) return
-      if (data.done) {
-        finalizeMessage(streamingIdRef.current)
-        streamingIdRef.current = null
-        setReiganState('idle')
-        if (data.conversationId) setConversationId(data.conversationId)
-      } else {
-        appendToken(streamingIdRef.current, data.token)
-      }
-    })
-    return unsub
-  }, [ipc])
-
-  const handleSend = useCallback(async (text: string) => {
-    if (!ipc) return
-
-    addUserMessage(text)
-    const history = messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
-
-    const msgId = startStreaming()
-    streamingIdRef.current = msgId
-    setReiganState('processing')
-
-    try {
-      await ipc.sendMessage({ message: text, history, conversationId: conversationId ?? undefined })
-    } catch (err) {
-      appendToken(msgId, `\n\n*Error: ${err}*`)
-      finalizeMessage(msgId)
-      streamingIdRef.current = null
-      setReiganState('error')
-    }
-  }, [ipc, messages, conversationId])
 
   const isEmpty = messages.length === 0
 
@@ -97,7 +56,7 @@ export function ChatPanel() {
       </div>
 
       {/* Input bar */}
-      <InputBar onSend={handleSend} inputRef={chatInputRef} />
+      <InputBar onSend={sendMessage} inputRef={chatInputRef} />
     </div>
   )
 }

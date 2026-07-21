@@ -24,6 +24,52 @@ const api = {
   // System
   getSystemInfo: () => ipcRenderer.invoke(IPC.SYSTEM_INFO),
 
+  // Voice
+  voice: {
+    startListening: () => ipcRenderer.invoke(IPC.VOICE_START),
+    stopListening: () => ipcRenderer.invoke(IPC.VOICE_STOP),
+    sendAudioChunk: (buffer: ArrayBuffer) => ipcRenderer.send(IPC.VOICE_AUDIO_CHUNK, buffer),
+    sendAmplitude: (rms: number) => ipcRenderer.send(IPC.VOICE_AMPLITUDE, rms),
+    onTranscript: (callback: (data: { text: string; isFinal: boolean }) => void) => {
+      const handler = (_: unknown, data: { text: string; isFinal: boolean }) => callback(data)
+      ipcRenderer.on(IPC.VOICE_TRANSCRIPT, handler)
+      return () => ipcRenderer.removeListener(IPC.VOICE_TRANSCRIPT, handler)
+    },
+    onAudioPlayback: (callback: (audioBuffer: ArrayBuffer) => void) => {
+      const handler = (_: unknown, audioBuffer: ArrayBuffer) => callback(audioBuffer)
+      ipcRenderer.on(IPC.VOICE_AUDIO_PLAYBACK, handler)
+      return () => ipcRenderer.removeListener(IPC.VOICE_AUDIO_PLAYBACK, handler)
+    },
+    onStateChange: (callback: (state: string) => void) => {
+      const handler = (_: unknown, state: string) => callback(state)
+      ipcRenderer.on(IPC.VOICE_STATE_CHANGE, handler)
+      return () => ipcRenderer.removeListener(IPC.VOICE_STATE_CHANGE, handler)
+    },
+    onOrbAudio: (callback: (data: { amplitude: number; bass: number; mid: number; high: number }) => void) => {
+      const handler = (_: unknown, data: { amplitude: number; bass: number; mid: number; high: number }) => callback(data)
+      ipcRenderer.on(IPC.VOICE_ORB_AUDIO, handler)
+      return () => ipcRenderer.removeListener(IPC.VOICE_ORB_AUDIO, handler)
+    },
+    onError: (callback: (message: string) => void) => {
+      const handler = (_: unknown, message: string) => callback(message)
+      ipcRenderer.on(IPC.VOICE_ERROR, handler)
+      return () => ipcRenderer.removeListener(IPC.VOICE_ERROR, handler)
+    },
+  },
+
+  // Google account
+  google: {
+    getStatus: () => ipcRenderer.invoke(IPC.GOOGLE_STATUS),
+    connect: () => ipcRenderer.invoke(IPC.GOOGLE_CONNECT),
+    disconnect: () => ipcRenderer.invoke(IPC.GOOGLE_DISCONNECT),
+  },
+
+  // Calendar
+  calendar: {
+    listEvents: (startDate: string, endDate: string) =>
+      ipcRenderer.invoke(IPC.CALENDAR_LIST_EVENTS, { startDate, endDate }),
+  },
+
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

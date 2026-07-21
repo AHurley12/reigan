@@ -1,9 +1,12 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, globalShortcut } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerLLMHandlers } from './ipc/llm'
 import { registerTaskHandlers } from './ipc/tasks'
 import { registerSystemHandlers } from './ipc/system'
+import { registerVoiceHandlers } from './ipc/voice'
+import { registerGoogleHandlers } from './ipc/google'
+import { registerCalendarHandlers } from './ipc/calendar'
 import { getDatabase, closeDatabase } from './db/database'
 
 function createWindow(): BrowserWindow {
@@ -59,6 +62,9 @@ app.whenReady().then(() => {
   registerLLMHandlers(mainWindow)
   registerTaskHandlers()
   registerSystemHandlers()
+  registerVoiceHandlers(mainWindow)
+  registerGoogleHandlers()
+  registerCalendarHandlers()
 
   // Window control IPC
   ipcMain.on('window:minimize', () => mainWindow.minimize())
@@ -76,4 +82,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

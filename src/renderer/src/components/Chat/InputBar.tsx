@@ -1,6 +1,7 @@
 import React, { useRef, KeyboardEvent } from 'react'
-import { Send, Mic } from 'lucide-react'
+import { Send, Mic, Square } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useVoiceControls } from '../../hooks/useVoice'
 
 interface Props {
   onSend: (text: string) => void
@@ -11,6 +12,7 @@ export function InputBar({ onSend, inputRef }: Props) {
   const internalRef = useRef<HTMLTextAreaElement>(null)
   const ref = inputRef ?? internalRef
   const { reiganState } = useAppStore()
+  const { isActive: isVoiceActive, startVoice, stopVoice } = useVoiceControls()
   const isDisabled = reiganState === 'processing'
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -51,21 +53,25 @@ export function InputBar({ onSend, inputRef }: Props) {
         style={{ fontFamily: 'var(--font-body)', maxHeight: '120px' }}
       />
 
-      {/* Mic button (disabled placeholder) */}
+      {/* Mic button */}
       <div className="relative group">
         <button
-          disabled
+          onClick={() => (isVoiceActive ? stopVoice() : startVoice())}
+          disabled={isDisabled}
           className="w-9 h-9 rounded-md flex items-center justify-center
-            opacity-30 cursor-not-allowed"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
-          aria-label="Voice (coming soon)"
+            transition-all duration-fast disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{
+            background: isVoiceActive ? 'var(--reigan-gradient)' : 'var(--bg-elevated)',
+            color: isVoiceActive ? 'white' : 'var(--text-muted)',
+          }}
+          aria-label={isVoiceActive ? 'Stop listening' : 'Start voice input'}
         >
-          <Mic size={16} />
+          {isVoiceActive ? <Square size={14} /> : <Mic size={16} />}
         </button>
         <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block
           px-2 py-1 rounded text-[10px] whitespace-nowrap pointer-events-none"
           style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-          Voice coming soon
+          {isVoiceActive ? 'Listening — click to stop' : 'Voice (or Ctrl+Shift+Space)'}
         </div>
       </div>
 

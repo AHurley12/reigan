@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting } from '../db/queries'
+import { voiceManager } from '../voice/voiceManager'
 
 let activeConversationId: string | null = null
 
@@ -44,6 +45,12 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
 
     mainWindow.webContents.send(IPC.LLM_STREAM, { token: '', done: true, conversationId: activeConversationId })
     saveMessage({ conversationId: activeConversationId, role: 'assistant', content: fullResponse })
+
+    if (voiceManager.consumeExpectSpokenReply()) {
+      const elevenLabsApiKey = getSetting('elevenLabsApiKey') ?? ''
+      const voiceId = getSetting('voiceId') ?? undefined
+      voiceManager.speak(fullResponse, { elevenLabsApiKey, voiceId }).catch(() => {})
+    }
 
     return { conversationId: activeConversationId }
   })

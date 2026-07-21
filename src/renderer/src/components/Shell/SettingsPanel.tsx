@@ -6,6 +6,13 @@ import { useIPC } from '../../hooks/useIPC'
 import { SectionHeader } from '../shared/SectionHeader'
 import { Button } from '../shared/Button'
 
+const VOICE_OPTIONS = [
+  { id: 'pNInz6obpgDQGcFmaJgB', label: 'Adam' },
+  { id: 'ErXwobaYiN019PkySvjV', label: 'Antoni' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', label: 'Josh' },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam' },
+]
+
 export function SettingsPanel() {
   const { settingsOpen, setSettingsOpen } = useAppStore()
   const { settings, updateSetting } = useSettingsStore()
@@ -15,12 +22,29 @@ export function SettingsPanel() {
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const [deepgramKeyInput, setDeepgramKeyInput] = useState('')
+  const [elevenLabsKeyInput, setElevenLabsKeyInput] = useState('')
+  const [showVoiceKeys, setShowVoiceKeys] = useState(false)
+  const [voiceSaved, setVoiceSaved] = useState(false)
+
+  const [googleClientIdInput, setGoogleClientIdInput] = useState('')
+  const [googleClientSecretInput, setGoogleClientSecretInput] = useState('')
+  const [googleSaved, setGoogleSaved] = useState(false)
+  const [googleStatus, setGoogleStatus] = useState<{ configured: boolean; connected: boolean }>({
+    configured: false,
+    connected: false,
+  })
+  const [googleBusy, setGoogleBusy] = useState(false)
+  const [googleError, setGoogleError] = useState('')
+
   useEffect(() => {
-    if (settingsOpen) {
-      ipc?.getSetting('anthropicApiKey').then((key) => {
-        if (key) setApiKeyInput(key)
-      })
-    }
+    if (!settingsOpen || !ipc) return
+    ipc.getSetting('anthropicApiKey').then((key) => { if (key) setApiKeyInput(key) })
+    ipc.getSetting('deepgramApiKey').then((key) => { if (key) setDeepgramKeyInput(key) })
+    ipc.getSetting('elevenLabsApiKey').then((key) => { if (key) setElevenLabsKeyInput(key) })
+    ipc.getSetting('googleClientId').then((v) => { if (v) setGoogleClientIdInput(v) })
+    ipc.getSetting('googleClientSecret').then((v) => { if (v) setGoogleClientSecretInput(v) })
+    ipc.google.getStatus().then(setGoogleStatus)
   }, [settingsOpen])
 
   const handleSaveKey = async () => {
@@ -28,6 +52,51 @@ export function SettingsPanel() {
     updateSetting('anthropicApiKey', apiKeyInput)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleSaveVoiceKeys = async () => {
+    await ipc?.setSetting('deepgramApiKey', deepgramKeyInput)
+    await ipc?.setSetting('elevenLabsApiKey', elevenLabsKeyInput)
+    updateSetting('deepgramApiKey', deepgramKeyInput)
+    updateSetting('elevenLabsApiKey', elevenLabsKeyInput)
+    setVoiceSaved(true)
+    setTimeout(() => setVoiceSaved(false), 2000)
+  }
+
+  const handleVoiceIdChange = async (voiceId: string) => {
+    updateSetting('voiceId', voiceId)
+    await ipc?.setSetting('voiceId', voiceId)
+  }
+
+  const handlePushToTalkChange = async (pushToTalk: boolean) => {
+    updateSetting('pushToTalk', pushToTalk)
+    await ipc?.setSetting('pushToTalk', String(pushToTalk))
+  }
+
+  const handleSaveGoogleCreds = async () => {
+    await ipc?.setSetting('googleClientId', googleClientIdInput)
+    await ipc?.setSetting('googleClientSecret', googleClientSecretInput)
+    setGoogleSaved(true)
+    setTimeout(() => setGoogleSaved(false), 2000)
+    if (ipc) setGoogleStatus(await ipc.google.getStatus())
+  }
+
+  const handleGoogleConnect = async () => {
+    if (!ipc) return
+    setGoogleBusy(true)
+    setGoogleError('')
+    const result = await ipc.google.connect()
+    if (!result.connected && result.error) setGoogleError(result.error)
+    setGoogleStatus(await ipc.google.getStatus())
+    setGoogleBusy(false)
+  }
+
+  const handleGoogleDisconnect = async () => {
+    if (!ipc) return
+    setGoogleBusy(true)
+    await ipc.google.disconnect()
+    setGoogleStatus(await ipc.google.getStatus())
+    setGoogleBusy(false)
   }
 
   if (!settingsOpen) return null
@@ -101,6 +170,148 @@ export function SettingsPanel() {
                 {saved ? <Check size={14} /> : 'Save'}
               </Button>
             </div>
+          </div>
+
+          {/* Voice APIs */}
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                Voice APIs
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Deepgram (speech-to-text) and ElevenLabs (text-to-speech) keys.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type={showVoiceKeys ? 'text' : 'password'}
+                value={deepgramKeyInput}
+                onChange={(e) => setDeepgramKeyInput(e.target.value)}
+                placeholder="Deepgram API key"
+                className="w-full bg-elevated rounded-md px-3 py-2 text-sm
+                  placeholder:text-txt-muted text-txt-primary
+                  border border-[var(--border)] focus:border-[var(--border-accent)] focus:outline-none
+                  font-mono transition-colors"
+              />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showVoiceKeys ? 'text' : 'password'}
+                    value={elevenLabsKeyInput}
+                    onChange={(e) => setElevenLabsKeyInput(e.target.value)}
+                    placeholder="ElevenLabs API key"
+                    className="w-full bg-elevated rounded-md px-3 py-2 pr-10 text-sm
+                      placeholder:text-txt-muted text-txt-primary
+                      border border-[var(--border)] focus:border-[var(--border-accent)] focus:outline-none
+                      font-mono transition-colors"
+                  />
+                  <button
+                    onClick={() => setShowVoiceKeys((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {showVoiceKeys ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <Button size="sm" variant={voiceSaved ? 'primary' : 'ghost'} onClick={handleSaveVoiceKeys}>
+                  {voiceSaved ? <Check size={14} /> : 'Save'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <select
+                value={settings.voiceId}
+                onChange={(e) => handleVoiceIdChange(e.target.value)}
+                className="flex-1 bg-elevated rounded-md px-3 py-2 text-sm text-txt-primary
+                  border border-[var(--border)] focus:border-[var(--border-accent)] focus:outline-none"
+              >
+                {VOICE_OPTIONS.map((v) => (
+                  <option key={v.id} value={v.id}>{v.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => handlePushToTalkChange(!settings.pushToTalk)}
+                className="px-3 py-2 rounded-md text-xs border transition-colors"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {settings.pushToTalk ? 'Push-to-talk' : 'Toggle'}
+              </button>
+            </div>
+            <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Ctrl+Shift+Space starts/stops listening from anywhere in the app.
+            </p>
+          </div>
+
+          {/* Google Account */}
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                Google Account
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Connects Calendar and Gmail tools. Requires a Google Cloud OAuth Client ID/Secret.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={googleClientIdInput}
+                onChange={(e) => setGoogleClientIdInput(e.target.value)}
+                placeholder="Google Client ID"
+                className="w-full bg-elevated rounded-md px-3 py-2 text-sm
+                  placeholder:text-txt-muted text-txt-primary
+                  border border-[var(--border)] focus:border-[var(--border-accent)] focus:outline-none
+                  font-mono transition-colors"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={googleClientSecretInput}
+                  onChange={(e) => setGoogleClientSecretInput(e.target.value)}
+                  placeholder="Google Client Secret"
+                  className="flex-1 bg-elevated rounded-md px-3 py-2 text-sm
+                    placeholder:text-txt-muted text-txt-primary
+                    border border-[var(--border)] focus:border-[var(--border-accent)] focus:outline-none
+                    font-mono transition-colors"
+                />
+                <Button size="sm" variant={googleSaved ? 'primary' : 'ghost'} onClick={handleSaveGoogleCreds}>
+                  {googleSaved ? <Check size={14} /> : 'Save'}
+                </Button>
+              </div>
+            </div>
+
+            <div
+              className="rounded-lg p-3 flex items-center justify-between"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: googleStatus.connected ? 'var(--active)' : 'var(--text-muted)' }}
+                />
+                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {googleStatus.connected ? 'Connected — Calendar, Gmail' : 'Not connected'}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={googleBusy || (!googleStatus.connected && !googleClientIdInput)}
+                onClick={googleStatus.connected ? handleGoogleDisconnect : handleGoogleConnect}
+              >
+                {googleStatus.connected ? 'Disconnect' : 'Sign in with Google'}
+              </Button>
+            </div>
+            {googleError && (
+              <p className="text-[10px]" style={{ color: 'var(--critical, #EF4444)' }}>{googleError}</p>
+            )}
           </div>
 
           {/* Japanese Level */}
