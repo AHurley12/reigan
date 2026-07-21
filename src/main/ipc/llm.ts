@@ -37,6 +37,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
         mainWindow.webContents.send(IPC.LLM_STREAM, { token, done: false, conversationId: activeConversationId })
       }
     } catch (err) {
+      console.error('[REIGAN] streamResponse failed:', err)
       const errMsg = `Error: ${err instanceof Error ? err.message : String(err)}`
       mainWindow.webContents.send(IPC.LLM_STREAM, { token: errMsg, done: true, conversationId: activeConversationId })
       return { conversationId: activeConversationId }
