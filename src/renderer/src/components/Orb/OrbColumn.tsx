@@ -1,5 +1,6 @@
 import { VoiceOrb } from './VoiceOrb'
 import { useAppStore } from '../../stores/appStore'
+import { useVoiceStore } from '../../stores/voiceStore'
 import type { ReiganState } from '../../../../shared/types'
 
 const DEV_STATES: ReiganState[] = ['idle', 'listening', 'processing', 'speaking', 'error', 'success']
@@ -16,6 +17,8 @@ const STATE_LABELS: Record<ReiganState, string> = {
 export function OrbColumn() {
   const reiganState = useAppStore((s) => s.reiganState)
   const setReiganState = useAppStore((s) => s.setReiganState)
+  const transcript = useVoiceStore((s) => s.transcript)
+  const orbAudio = useVoiceStore((s) => s.orbAudio)
 
   return (
     <div
@@ -52,19 +55,22 @@ export function OrbColumn() {
 
       {/* Transcript */}
       <div className="mt-4 w-full pt-4 text-center flex-1" style={{ borderTop: '1px solid var(--border)' }}>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Voice not yet connected
+        <p className="text-xs" style={{ color: transcript ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+          {transcript || (reiganState === 'listening' ? 'Listening…' : 'Ctrl+Shift+Space to talk')}
         </p>
       </div>
 
       {/* Audio levels */}
       <div className="mt-auto w-full pt-4" style={{ borderTop: '1px solid var(--border)' }}>
         <div className="flex items-end gap-1 h-6 justify-center">
-          {[0.2, 0.4, 0.6, 0.4, 0.2].map((h, i) => (
+          {[orbAudio.bass, orbAudio.mid, orbAudio.amplitude, orbAudio.high, orbAudio.bass].map((level, i) => (
             <div
               key={i}
-              className="w-1 rounded-full"
-              style={{ height: `${h * 100}%`, background: 'var(--text-muted)' }}
+              className="w-1 rounded-full transition-all duration-100"
+              style={{
+                height: `${Math.max(12, Math.min(1, level) * 100)}%`,
+                background: reiganState === 'listening' || reiganState === 'speaking' ? 'var(--text-accent)' : 'var(--text-muted)',
+              }}
             />
           ))}
         </div>

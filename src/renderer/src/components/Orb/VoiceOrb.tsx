@@ -2,12 +2,14 @@ import { useRef, useEffect } from 'react'
 import { ReiganOrb } from './engine/ReiganOrb'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useVoiceStore } from '../../stores/voiceStore'
 
 export function VoiceOrb() {
   const containerRef = useRef<HTMLDivElement>(null)
   const orbRef = useRef<ReiganOrb | null>(null)
   const reiganState = useAppStore((s) => s.reiganState)
   const particleCount = useSettingsStore((s) => s.settings.particleCount)
+  const orbAudio = useVoiceStore((s) => s.orbAudio)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -22,6 +24,10 @@ export function VoiceOrb() {
   useEffect(() => {
     orbRef.current?.setState(reiganState)
   }, [reiganState])
+
+  useEffect(() => {
+    orbRef.current?.setAudioData(orbAudio)
+  }, [orbAudio])
 
   return (
     <div

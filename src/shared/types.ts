@@ -44,6 +44,29 @@ export interface AppSettings {
   voiceEnabled: boolean;
   particleCount: number;
   theme: 'dark';
+  deepgramApiKey: string;
+  elevenLabsApiKey: string;
+  voiceId: string;
+  pushToTalk: boolean;
+}
+
+// ── Voice ──
+export type VoiceOrbAudioData = {
+  amplitude: number;
+  bass: number;
+  mid: number;
+  high: number;
+};
+
+// ── Calendar ──
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  location?: string;
+  start: string; // ISO 8601
+  end: string; // ISO 8601
+  allDay: boolean;
 }
 
 // ── IPC Channel Names ──
@@ -63,4 +86,22 @@ export const IPC = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  // Voice
+  VOICE_START: 'voice:start',
+  VOICE_STOP: 'voice:stop',
+  VOICE_AUDIO_CHUNK: 'voice:audio-chunk',
+  VOICE_AMPLITUDE: 'voice:amplitude',
+  VOICE_TRANSCRIPT: 'voice:transcript',
+  VOICE_AUDIO_PLAYBACK: 'voice:audio-playback',
+  VOICE_STATE_CHANGE: 'voice:state-change',
+  VOICE_ORB_AUDIO: 'voice:orb-audio',
+  VOICE_ERROR: 'voice:error',
+  VOICE_PTT_DOWN: 'voice:ptt-down',
+  VOICE_PTT_UP: 'voice:ptt-up',
+  // Google account
+  GOOGLE_STATUS: 'google:status',
+  GOOGLE_CONNECT: 'google:connect',
+  GOOGLE_DISCONNECT: 'google:disconnect',
+  // Calendar
+  CALENDAR_LIST_EVENTS: 'calendar:list-events',
 } as const;

@@ -9,6 +9,10 @@ export const DEFAULT_SETTINGS = {
   voiceEnabled: false,
   particleCount: 8000,
   theme: 'dark' as const,
+  deepgramApiKey: '',
+  elevenLabsApiKey: '',
+  voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam
+  pushToTalk: true,
 };
 
 export const NAV_ITEMS = [
