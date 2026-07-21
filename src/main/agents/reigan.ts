@@ -51,23 +51,37 @@ export async function* streamResponse(
     m.role === 'user' ? [new HumanMessage(m.content)] : [new AIMessage(m.content)]
   )
 
-  let fullResponse = ''
-  const stream = await executor.streamLog({ input, chat_history: chatHistory })
+  // AgentExecutor's final output is an object ({ output, ... }), so streamLog's
+  // '/streamed_output_str/-' path (which only fires for string-typed outputs) never
+  // matches. streamEvents v2 gives per-token deltas from the underlying chat model instead.
+  const eventStream = executor.streamEvents(
+    { input, chat_history: chatHistory },
+    { version: 'v2' }
+  )
 
-  for await (const chunk of stream) {
-    for (const op of chunk.ops) {
-      if (op.op === 'add' && op.path.includes('/streamed_output_str/-')) {
-        const token = op.value as string
-        fullResponse += token
-        yield token
+  let yieldedAny = false
+
+  for await (const event of eventStream) {
+    if (event.event !== 'on_chat_model_stream') continue
+    const content = event.data?.chunk?.content
+
+    if (typeof content === 'string') {
+      if (content) {
+        yieldedAny = true
+        yield content
+      }
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block?.type === 'text' && typeof block.text === 'string' && block.text) {
+          yieldedAny = true
+          yield block.text
+        }
       }
     }
   }
 
-  if (!fullResponse) {
-    // Fallback: run without streaming
-    const result = await executor.invoke({ input, chat_history: chatHistory })
-    yield result.output
+  if (!yieldedAny) {
+    yield "I didn't have a response for that — try rephrasing."
   }
 }
 
