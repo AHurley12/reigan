@@ -1,5 +1,5 @@
 // ── App State ──
-export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
+export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'success';
 export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
 

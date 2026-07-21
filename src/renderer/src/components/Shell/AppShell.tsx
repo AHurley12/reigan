@@ -3,6 +3,7 @@ import { TitleBar } from './TitleBar'
 import { NavBar } from '../Nav/NavBar'
 import { ChatPanel } from '../Chat/ChatPanel'
 import { TaskPanel } from '../Tasks/TaskPanel'
+import { OrbColumn } from '../Orb/OrbColumn'
 import { useAppStore } from '../../stores/appStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
@@ -67,6 +68,7 @@ export function AppShell() {
         <main className="flex-1 overflow-hidden" style={{ background: 'var(--bg-void)' }}>
           {renderModule()}
         </main>
+        <OrbColumn />
       </div>
     </div>
   )

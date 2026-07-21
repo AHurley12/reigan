@@ -8,6 +8,7 @@ const STATE_COLORS: Record<ReiganState, string> = {
   processing: '#7C3AED',
   speaking: '#00D4FF',
   error: '#EF4444',
+  success: '#10B981',
 }
 
 const STATE_LABELS: Record<ReiganState, string> = {
@@ -16,6 +17,7 @@ const STATE_LABELS: Record<ReiganState, string> = {
   processing: '処理中',
   speaking: '発話中',
   error: 'エラー',
+  success: '成功',
 }
 
 export function TitleBar() {

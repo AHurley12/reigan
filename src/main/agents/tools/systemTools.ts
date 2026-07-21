@@ -1,6 +1,6 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
-import openApp from 'open'
+import { shell } from 'electron'
 
 export const getTimeTool = new DynamicStructuredTool({
   name: 'get_time',
@@ -34,7 +34,12 @@ export const openAppTool = new DynamicStructuredTool({
   }),
   func: async ({ target }) => {
     try {
-      await openApp(target)
+      if (/^https?:\/\//i.test(target)) {
+        await shell.openExternal(target)
+      } else {
+        const err = await shell.openPath(target)
+        if (err) throw new Error(err)
+      }
       return `Opened: ${target}`
     } catch (err) {
       return `Could not open "${target}": ${err}`

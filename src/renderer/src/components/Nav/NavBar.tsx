@@ -4,7 +4,6 @@ import {
   Calendar, Zap, Code, Settings
 } from 'lucide-react'
 import { NavItem } from './NavItem'
-import { VoiceOrb } from '../VoiceOrb/VoiceOrb'
 import { useAppStore } from '../../stores/appStore'
 import { NAV_ITEMS } from '../../../../shared/constants'
 import type { AppModule } from '../../../../shared/types'
@@ -47,11 +46,6 @@ export function NavBar() {
             shortcut={`Ctrl+${i + 1}`}
           />
         ))}
-      </div>
-
-      {/* Voice orb placeholder */}
-      <div className="mb-3 mt-2">
-        <VoiceOrb />
       </div>
 
       {/* Settings button */}

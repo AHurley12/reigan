@@ -25,13 +25,14 @@ export function ChatPanel() {
     if (!ipc) return
     const unsub = ipc.onStream((data) => {
       if (!streamingIdRef.current) return
+      if (data.token) {
+        appendToken(streamingIdRef.current, data.token)
+      }
       if (data.done) {
         finalizeMessage(streamingIdRef.current)
         streamingIdRef.current = null
         setReiganState('idle')
         if (data.conversationId) setConversationId(data.conversationId)
-      } else {
-        appendToken(streamingIdRef.current, data.token)
       }
     })
     return unsub

@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS = {
   anthropicApiKey: '',
   japaneseLevel: 1 as const,
   voiceEnabled: false,
-  particleCount: 1000,
+  particleCount: 8000,
   theme: 'dark' as const,
 };
 
