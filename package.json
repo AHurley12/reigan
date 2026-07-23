@@ -1,7 +1,7 @@
 {
   "name": "reigan",
   "version": "0.1.0",
-  "description": "REIGAN (霊眼) - Japanese Neo-Futurist AI Desktop Assistant",
+  "description": "Shingan (心眼) - Japanese Retro-Futurist AI Desktop Assistant",
   "main": "./out/main/index.js",
   "scripts": {
     "start": "electron-vite preview",

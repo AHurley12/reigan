@@ -1,5 +1,3 @@
-import { useEffect, useCallback } from 'react'
-
 declare global {
   interface Window {
     reigan: {
@@ -11,6 +9,7 @@ declare global {
       deleteTask: (id: string) => Promise<void>
       getSetting: (key: string) => Promise<string | null>
       setSetting: (key: string, value: string) => Promise<void>
+      getAllSettings: () => Promise<Record<string, string>>
       getSystemInfo: () => Promise<any>
       voice: {
         startListening: () => Promise<void>

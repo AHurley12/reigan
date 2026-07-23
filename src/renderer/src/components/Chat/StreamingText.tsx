@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -8,6 +8,21 @@ interface Props {
 }
 
 export function StreamingText({ content, isStreaming }: Props) {
+  // Keep the cursor mounted briefly after streaming ends so it can fade out
+  // instead of vanishing the instant the final token arrives.
+  const [showCursor, setShowCursor] = useState(!!isStreaming)
+
+  useEffect(() => {
+    if (isStreaming) {
+      setShowCursor(true)
+      return
+    }
+    if (!showCursor) return
+    const timeout = setTimeout(() => setShowCursor(false), 300)
+    return () => clearTimeout(timeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming])
+
   return (
     <div className="prose prose-invert prose-sm max-w-none
       [&_p]:text-txt-secondary [&_p]:leading-relaxed
@@ -25,9 +40,11 @@ export function StreamingText({ content, isStreaming }: Props) {
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {content}
       </ReactMarkdown>
-      {isStreaming && (
+      {showCursor && (
         <span
-          className="inline-block w-0.5 h-4 ml-0.5 align-middle animate-cursor"
+          className={`inline-block w-0.5 h-4 ml-0.5 align-middle ${
+            isStreaming ? 'animate-cursor' : 'animate-cursor-out'
+          }`}
           style={{ background: 'var(--reigan-secondary)' }}
         />
       )}

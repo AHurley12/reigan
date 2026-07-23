@@ -42,7 +42,7 @@ export function InputBar({ onSend, inputRef }: Props) {
       <textarea
         ref={ref}
         onKeyDown={handleKeyDown}
-        placeholder="Ask REIGAN anything... (Enter to send, Shift+Enter for newline)"
+        placeholder="Ask Shingan anything... (Enter to send, Shift+Enter for newline)"
         rows={1}
         disabled={isDisabled}
         className="flex-1 resize-none bg-elevated rounded-md px-3 py-2 text-sm

@@ -41,13 +41,20 @@ export interface Task {
 export interface AppSettings {
   anthropicApiKey: string;
   japaneseLevel: JapaneseLevel;
+  showFurigana: boolean;
+  showRomaji: boolean;
   voiceEnabled: boolean;
   particleCount: number;
-  theme: 'dark';
   deepgramApiKey: string;
   elevenLabsApiKey: string;
   voiceId: string;
   pushToTalk: boolean;
+  ttsStability: number;
+  ttsSimilarity: number;
+  googleClientId: string;
+  googleClientSecret: string;
+  showOrbColumn: boolean;
+  reducedMotion: boolean;
 }
 
 // ── Voice ──
@@ -86,6 +93,7 @@ export const IPC = {
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_LOAD_ALL: 'settings:load-all',
   // Voice
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',

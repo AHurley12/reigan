@@ -2,18 +2,33 @@ import React, { useEffect, useRef } from 'react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { useChatStore } from '../../stores/chatStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+
+const NEAR_BOTTOM_THRESHOLD = 100
+const SCROLL_THROTTLE_MS = 100
 
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages)
   const sendMessage = useChatStore((s) => s.sendMessage)
+  const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const lastScrollAtRef = useRef(0)
 
-  // Auto-scroll
+  // Auto-scroll — only if the user hasn't scrolled up to read history, and
+  // throttled so rapid token updates during streaming don't fight the user.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    const el = scrollRef.current
+    if (!el) return
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distanceFromBottom > NEAR_BOTTOM_THRESHOLD) return
+
+    const now = Date.now()
+    if (now - lastScrollAtRef.current < SCROLL_THROTTLE_MS) return
+    lastScrollAtRef.current = now
+
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
   const isEmpty = messages.length === 0
@@ -28,15 +43,17 @@ export function ChatPanel() {
       >
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-            <div
-              className="text-5xl font-kanji"
-              style={{ color: 'var(--text-kanji)', opacity: 0.3 }}
-            >
-              霊眼
-            </div>
+            {japaneseLevel >= 1 && (
+              <div
+                className="text-5xl font-kanji"
+                style={{ color: 'var(--text-kanji)', opacity: 0.3 }}
+              >
+                心眼
+              </div>
+            )}
             <div className="space-y-1">
               <p className="font-display text-lg" style={{ color: 'var(--text-secondary)' }}>
-                Welcome. I am REIGAN.
+                Welcome. I am Shingan.
               </p>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 To activate, add your Anthropic API key in{' '}

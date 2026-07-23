@@ -50,7 +50,11 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     if (voiceManager.consumeExpectSpokenReply()) {
       const elevenLabsApiKey = getSetting('elevenLabsApiKey') ?? ''
       const voiceId = getSetting('voiceId') ?? undefined
-      voiceManager.speak(fullResponse, { elevenLabsApiKey, voiceId }).catch(() => {})
+      const stabilityRaw = Number(getSetting('ttsStability'))
+      const similarityRaw = Number(getSetting('ttsSimilarity'))
+      const stability = Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5
+      const similarityBoost = Number.isFinite(similarityRaw) ? similarityRaw : 0.75
+      voiceManager.speak(fullResponse, { elevenLabsApiKey, voiceId, stability, similarityBoost }).catch(() => {})
     }
 
     return { conversationId: activeConversationId }

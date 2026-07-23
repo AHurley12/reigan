@@ -77,7 +77,10 @@ export class VoiceManager {
     return expected
   }
 
-  async speak(text: string, config: { elevenLabsApiKey: string; voiceId?: string }): Promise<void> {
+  async speak(
+    text: string,
+    config: { elevenLabsApiKey: string; voiceId?: string; stability?: number; similarityBoost?: number }
+  ): Promise<void> {
     if (!config.elevenLabsApiKey || !text.trim()) return
 
     // Avoid transcribing our own voice back through the mic.
@@ -87,6 +90,7 @@ export class VoiceManager {
       this.tts = new TextToSpeech(config.elevenLabsApiKey, config.voiceId)
       this.ttsVoiceId = config.voiceId
     }
+    this.tts.setVoiceSettings(config.stability ?? 0.5, config.similarityBoost ?? 0.75)
 
     this.callbacks?.onStateChange('speaking')
     try {

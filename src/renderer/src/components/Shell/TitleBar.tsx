@@ -1,27 +1,38 @@
-import React from 'react'
 import { useAppStore } from '../../stores/appStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+import { stateLabel } from '../../i18n/ja'
+import { HankoMark } from '../shared/HankoMark'
 import type { ReiganState } from '../../../../shared/types'
 
 const STATE_COLORS: Record<ReiganState, string> = {
-  idle: '#4A5568',
-  listening: '#10B981',
-  processing: '#7C3AED',
-  speaking: '#00D4FF',
-  error: '#EF4444',
-  success: '#10B981',
+  idle: '#6B6455',
+  listening: '#23A18C',
+  processing: '#D8432A',
+  speaking: '#C9A227',
+  error: '#E5484D',
+  success: '#23A18C',
 }
 
-const STATE_LABELS: Record<ReiganState, string> = {
-  idle: '待機',
-  listening: '聴取中',
-  processing: '処理中',
-  speaking: '発話中',
-  error: 'エラー',
-  success: '成功',
+function EnsoRing({ color, spinning }: { color: string; spinning: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" className={spinning ? 'animate-spin-slow' : ''}>
+      <circle
+        cx="7"
+        cy="7"
+        r="5.5"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeDasharray="30 4.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
 }
 
 export function TitleBar() {
-  const { reiganState, setSettingsOpen } = useAppStore()
+  const reiganState = useAppStore((s) => s.reiganState)
+  const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
   const color = STATE_COLORS[reiganState]
 
   return (
@@ -30,28 +41,21 @@ export function TitleBar() {
       style={{ background: 'var(--bg-void)', borderBottom: '1px solid var(--border)' }}
     >
       {/* Brand */}
-      <div className="titlebar-no-drag flex items-center gap-2">
+      <div className="titlebar-no-drag flex items-center gap-2.5">
+        <HankoMark size={22} />
         <span
-          className="text-base font-semibold tracking-wide"
-          style={{
-            background: 'var(--reigan-gradient)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            fontFamily: 'var(--font-display)',
-          }}
+          className="text-base font-semibold tracking-[0.08em]"
+          style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}
         >
-          ◉ REIGAN
-        </span>
-        <span className="text-xs font-kanji" style={{ color: 'var(--text-kanji)' }}>
-          霊眼
+          SHINGAN
         </span>
       </div>
 
       {/* State indicator */}
       <div className="flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+        <EnsoRing color={color} spinning={reiganState === 'processing'} />
         <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          {STATE_LABELS[reiganState]}
+          {stateLabel(reiganState, japaneseLevel)}
         </span>
       </div>
 

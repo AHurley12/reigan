@@ -20,6 +20,7 @@ const api = {
   // Settings
   getSetting: (key: string) => ipcRenderer.invoke(IPC.SETTINGS_GET, key),
   setSetting: (key: string, value: string) => ipcRenderer.invoke(IPC.SETTINGS_SET, key, value),
+  getAllSettings: () => ipcRenderer.invoke(IPC.SETTINGS_LOAD_ALL),
 
   // System
   getSystemInfo: () => ipcRenderer.invoke(IPC.SYSTEM_INFO),

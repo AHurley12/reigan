@@ -34,6 +34,13 @@ function buildExecutor(apiKey: string): AgentExecutor {
     apiKey,
     model: 'claude-sonnet-4-6',
     streaming: true,
+    // claude-sonnet-4-6 isn't in @langchain/anthropic's model allowlist, so its
+    // temperature/topP defaults (1 and -1) are sent unconditionally, which the API
+    // rejects (top_p=-1 invalid, and temperature+top_p can't both be set). Explicit
+    // temperature: null clears it (JSON.stringify drops undefined), leaving topP as
+    // the only sampling param.
+    temperature: null,
+    topP: 1,
   })
 
   const tools = getTools()

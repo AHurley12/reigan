@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { LayoutList, Columns, Plus } from 'lucide-react'
 import { TaskList } from './TaskList'
+import { TaskCard } from './TaskCard'
 import { SectionHeader } from '../shared/SectionHeader'
 import { Button } from '../shared/Button'
 import { useTaskStore } from '../../stores/taskStore'
 import { useIPC } from '../../hooks/useIPC'
 import { TASK_COLUMNS } from '../../../../shared/constants'
-import type { TaskStatus, Task } from '../../../../shared/types'
+import type { TaskStatus } from '../../../../shared/types'
 
 export function TaskPanel() {
   const { tasks, viewMode, filterStatus, setTasks, addTask, updateTask, removeTask, setViewMode, setFilterStatus } = useTaskStore()
@@ -49,7 +50,7 @@ export function TaskPanel() {
         className="flex items-center justify-between px-6 py-4 shrink-0"
         style={{ borderBottom: '1px solid var(--border)' }}
       >
-        <SectionHeader en="Tasks" ja="タスク" />
+        <SectionHeader en="Tasks" ja="タスク" romaji="tasuku" />
 
         <div className="flex items-center gap-2">
           {/* View toggle */}
@@ -115,7 +116,7 @@ export function TaskPanel() {
               return (
                 <div key={col.id} className="flex flex-col gap-2">
                   <div className="flex items-center justify-between mb-1">
-                    <SectionHeader en={col.en} ja={col.ja} />
+                    <SectionHeader en={col.en} ja={col.ja} romaji={col.romaji} />
                     <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
                       {colTasks.length}
                     </span>

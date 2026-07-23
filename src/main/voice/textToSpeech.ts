@@ -3,11 +3,13 @@ import { ElevenLabsClient } from 'elevenlabs'
 export class TextToSpeech {
   private client: ElevenLabsClient
   private voiceId: string
+  private stability = 0.5
+  private similarityBoost = 0.75
 
   constructor(apiKey: string, voiceId?: string) {
     this.client = new ElevenLabsClient({ apiKey })
     // Default voice — user can change in settings. "Adam" is a deep, calm
-    // male voice that fits the REIGAN archetype. Others: Antoni, Josh, Sam.
+    // male voice that fits the Shingan archetype. Others: Antoni, Josh, Sam.
     this.voiceId = voiceId || 'pNInz6obpgDQGcFmaJgB'
   }
 
@@ -21,8 +23,8 @@ export class TextToSpeech {
       model_id: 'eleven_flash_v2_5', // Fastest model, still natural
       output_format: 'pcm_22050', // Raw PCM for Web Audio playback
       voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
+        stability: this.stability,
+        similarity_boost: this.similarityBoost,
         style: 0.3,
       },
     })
@@ -34,5 +36,10 @@ export class TextToSpeech {
 
   setVoice(voiceId: string): void {
     this.voiceId = voiceId
+  }
+
+  setVoiceSettings(stability: number, similarityBoost: number): void {
+    this.stability = stability
+    this.similarityBoost = similarityBoost
   }
 }

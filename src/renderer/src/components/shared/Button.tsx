@@ -10,7 +10,7 @@ interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<Variant, string> = {
-  primary: 'bg-gradient-to-r from-reigan-primary to-reigan-secondary text-white hover:opacity-90',
+  primary: 'bg-reigan-primary text-white hover:opacity-90',
   ghost: 'bg-transparent border border-[var(--border)] text-txt-secondary hover:border-[var(--border-hover)] hover:text-txt-primary',
   danger: 'bg-critical/10 border border-critical/30 text-critical hover:bg-critical/20',
 }

@@ -33,7 +33,7 @@ export function VoiceOrb() {
     <div
       ref={containerRef}
       className="w-full aspect-square max-w-[240px] mx-auto rounded-full overflow-hidden"
-      aria-label={`REIGAN voice orb — ${reiganState}`}
+      aria-label={`Shingan voice orb — ${reiganState}`}
       role="img"
     />
   )

@@ -119,7 +119,7 @@ export function CalendarPanel() {
   return (
     <div className="relative flex flex-col h-full" onClick={() => setSelected(null)}>
       <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        <SectionHeader en="Calendar" ja="カレンダー" />
+        <SectionHeader en="Calendar" ja="カレンダー" romaji="karendaa" />
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); setWeekStart((w) => addDays(w, -7)) }}
@@ -237,7 +237,7 @@ export function CalendarPanel() {
                 ))}
 
                 {dayIndex === todayIndex && nowLineTop >= 0 && nowLineTop <= GRID_HEIGHT && (
-                  <div className="absolute left-0 right-0 pointer-events-none" style={{ top: nowLineTop, borderTop: '1.5px solid #EF4444' }} />
+                  <div className="absolute left-0 right-0 pointer-events-none" style={{ top: nowLineTop, borderTop: '1.5px solid var(--critical)' }} />
                 )}
               </div>
             ))}

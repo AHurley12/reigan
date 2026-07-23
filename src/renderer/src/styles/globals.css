@@ -1,40 +1,45 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Shippori+Mincho+B1:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg-void:        #06080F;
-  --bg-surface:     #0C1017;
-  --bg-elevated:    #141922;
-  --bg-subtle:      #1A2030;
+  /* Ink void — warm sumi-ink black, not blue-black */
+  --bg-void:        #0B0A08;
+  --bg-surface:     #16140F;
+  --bg-elevated:    #1E1B15;
+  --bg-subtle:      #272319;
 
-  --reigan-primary:   #7C3AED;
-  --reigan-secondary: #00D4FF;
-  --reigan-gradient:  linear-gradient(135deg, #7C3AED 0%, #00D4FF 100%);
-  --reigan-glow:      0 0 20px rgba(124, 58, 237, 0.3);
-  --reigan-glow-cyan: 0 0 20px rgba(0, 212, 255, 0.3);
+  /* Shu (vermillion / hanko seal) + jade (mind's-eye teal) */
+  --reigan-primary:   #D8432A;
+  --reigan-secondary: #23A18C;
+  --gold:             #C9A227;
+  --reigan-gradient:  linear-gradient(135deg, #D8432A 0%, #C9A227 100%);
+  --reigan-glow:      0 0 20px rgba(216, 67, 42, 0.35);
+  --reigan-glow-jade: 0 0 20px rgba(35, 161, 140, 0.35);
 
-  --active:    #10B981;
-  --alert:     #F59E0B;
-  --critical:  #EF4444;
-  --info:      #3B82F6;
+  --active:    #23A18C;
+  --alert:     #C9A227;
+  --critical:  #E5484D;
+  --info:      #5B7A99;
 
-  --text-primary:    #E8ECF4;
-  --text-secondary:  #8B95A8;
-  --text-muted:      #4A5568;
-  --text-kanji:      #6E7A91;
-  --text-accent:     #A78BFA;
+  /* Washi paper text tones */
+  --text-primary:    #EDE6D6;
+  --text-secondary:  #B5AB98;
+  --text-muted:      #6B6455;
+  --text-kanji:      #8A8065;
+  --text-accent:     #E0A54A;
 
-  --border:        rgba(255, 255, 255, 0.06);
-  --border-hover:  rgba(255, 255, 255, 0.12);
-  --border-accent: rgba(124, 58, 237, 0.4);
+  --border:        rgba(237, 230, 214, 0.07);
+  --border-hover:  rgba(237, 230, 214, 0.14);
+  --border-accent: rgba(216, 67, 42, 0.45);
 
-  --font-display: 'Space Grotesk', 'Noto Sans JP', sans-serif;
+  --font-display: 'Rajdhani', 'Zen Kaku Gothic New', sans-serif;
   --font-body:    'Inter', 'Noto Sans JP', sans-serif;
   --font-mono:    'JetBrains Mono', 'Noto Sans JP', monospace;
   --font-kanji:   'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+  --font-seal:    'Shippori Mincho B1', 'Zen Kaku Gothic New', serif;
 
   --space-1: 8px;
   --space-2: 16px;
@@ -109,6 +114,13 @@ html, body, #root {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+html[data-reduced-motion='true'] *,
+html[data-reduced-motion='true'] *::before,
+html[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
 }
 
 ruby {

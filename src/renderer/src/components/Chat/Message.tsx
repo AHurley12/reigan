@@ -16,7 +16,7 @@ export function Message({ message }: Props) {
   if (isUser) {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[75%]">
+        <div className="max-w-[75%] animate-slide-up">
           <div
             className="px-4 py-3 rounded-lg text-sm leading-relaxed"
             style={{
@@ -38,19 +38,19 @@ export function Message({ message }: Props) {
   }
 
   return (
-    <div className="flex flex-col mb-6">
+    <div className="flex flex-col mb-6 animate-fade-in">
       <div className="flex items-center gap-2 mb-2">
         <span
           className="text-xs font-kanji tracking-wider"
           style={{ color: 'var(--text-kanji)' }}
         >
-          霊眼
+          心眼
         </span>
         <span
           className="text-xs font-display font-medium"
           style={{ color: 'var(--text-muted)' }}
         >
-          REIGAN
+          SHINGAN
         </span>
         <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
           {formatTime(message.timestamp)}

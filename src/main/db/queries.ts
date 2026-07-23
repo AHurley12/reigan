@@ -145,3 +145,9 @@ export function setSetting(key: string, value: string): void {
   const db = getDatabase()
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
 }
+
+export function getAllSettings(): Record<string, string> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+}

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
-import { getSetting, setSetting } from '../db/queries'
+import { getSetting, setSetting, getAllSettings } from '../db/queries'
 import { resetExecutor } from '../agents/reigan'
 
 export function registerSystemHandlers(): void {
@@ -18,4 +18,6 @@ export function registerSystemHandlers(): void {
     if (key === 'anthropicApiKey') resetExecutor()
     return { success: true }
   })
+
+  ipcMain.handle(IPC.SETTINGS_LOAD_ALL, () => getAllSettings())
 }

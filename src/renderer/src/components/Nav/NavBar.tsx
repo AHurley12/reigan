@@ -19,7 +19,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 }
 
 export function NavBar() {
-  const { activeModule, setActiveModule, setSettingsOpen } = useAppStore()
+  const { activeModule, setActiveModule, settingsOpen, setSettingsOpen } = useAppStore()
 
   return (
     <div
@@ -51,8 +51,12 @@ export function NavBar() {
       {/* Settings button */}
       <button
         onClick={() => setSettingsOpen(true)}
-        className="w-full flex items-center justify-center h-10 rounded-md mx-1
-          transition-all duration-fast text-txt-muted hover:text-txt-secondary hover:bg-white/5"
+        className="w-full flex items-center justify-center h-10 rounded-[3px] mx-1 transition-all duration-fast"
+        style={{
+          color: settingsOpen ? 'var(--text-primary)' : 'var(--text-muted)',
+          background: settingsOpen ? 'rgba(216, 67, 42, 0.18)' : 'transparent',
+          border: settingsOpen ? '1px solid var(--reigan-primary)' : '1px solid transparent',
+        }}
         aria-label="Settings"
       >
         <Settings size={18} />

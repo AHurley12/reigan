@@ -1,17 +1,44 @@
+import type { ReactNode } from 'react'
 import { VoiceOrb } from './VoiceOrb'
 import { useAppStore } from '../../stores/appStore'
 import { useVoiceStore } from '../../stores/voiceStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+import { stateLabel } from '../../i18n/ja'
 import type { ReiganState } from '../../../../shared/types'
 
 const DEV_STATES: ReiganState[] = ['idle', 'listening', 'processing', 'speaking', 'error', 'success']
 
-const STATE_LABELS: Record<ReiganState, string> = {
-  idle: '待機',
-  listening: '聴取中',
-  processing: '処理中',
-  speaking: '発話中',
-  error: 'エラー',
-  success: '成功',
+const CORNERS: Array<{ top?: number; bottom?: number; left?: number; right?: number; borders: string }> = [
+  { top: -10, left: -10, borders: 'border-top border-left' },
+  { top: -10, right: -10, borders: 'border-top border-right' },
+  { bottom: -10, left: -10, borders: 'border-bottom border-left' },
+  { bottom: -10, right: -10, borders: 'border-bottom border-right' },
+]
+
+function ViewfinderFrame({ active, children }: { active: boolean; children: ReactNode }) {
+  const color = active ? 'var(--reigan-secondary)' : 'var(--text-muted)'
+  return (
+    <div className="relative">
+      {children}
+      {CORNERS.map((c, i) => (
+        <span
+          key={i}
+          className="absolute w-3.5 h-3.5 pointer-events-none transition-colors duration-normal"
+          style={{
+            top: c.top,
+            bottom: c.bottom,
+            left: c.left,
+            right: c.right,
+            borderTop: c.borders.includes('border-top') ? `1.5px solid ${color}` : undefined,
+            borderBottom: c.borders.includes('border-bottom') ? `1.5px solid ${color}` : undefined,
+            borderLeft: c.borders.includes('border-left') ? `1.5px solid ${color}` : undefined,
+            borderRight: c.borders.includes('border-right') ? `1.5px solid ${color}` : undefined,
+            opacity: active ? 0.9 : 0.4,
+          }}
+        />
+      ))}
+    </div>
+  )
 }
 
 export function OrbColumn() {
@@ -19,19 +46,23 @@ export function OrbColumn() {
   const setReiganState = useAppStore((s) => s.setReiganState)
   const transcript = useVoiceStore((s) => s.transcript)
   const orbAudio = useVoiceStore((s) => s.orbAudio)
+  const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
+  const isActive = reiganState === 'listening' || reiganState === 'speaking'
 
   return (
     <div
       className="w-[280px] flex-shrink-0 flex flex-col items-center pt-6 pb-4 px-5"
       style={{ background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)' }}
     >
-      {/* Voice Orb */}
-      <VoiceOrb />
+      {/* Voice Orb, framed like a viewfinder — the literal "eye" of Shingan */}
+      <ViewfinderFrame active={isActive}>
+        <VoiceOrb />
+      </ViewfinderFrame>
 
       {/* Status */}
       <div className="mt-4 w-full pt-4 text-center" style={{ borderTop: '1px solid var(--border)' }}>
         <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-          {STATE_LABELS[reiganState]}
+          {stateLabel(reiganState, japaneseLevel)}
         </p>
 
         {import.meta.env.DEV && (

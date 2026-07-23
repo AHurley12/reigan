@@ -1,9 +1,13 @@
-import React, { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { motion } from 'framer-motion'
+import { useSettingsStore } from '../../stores/settingsStore'
+import { hasKanji } from '../../i18n/kanji'
+import { FuriganaText } from '../shared/FuriganaText'
 import type { AppModule } from '../../../../shared/types'
 
 interface Props {
   id: AppModule
-  icon: React.ReactNode
+  icon: ReactNode
   en: string
   ja: string
   romaji: string
@@ -12,8 +16,12 @@ interface Props {
   shortcut?: string
 }
 
-export function NavItem({ id, icon, en, ja, romaji, isActive, onClick, shortcut }: Props) {
+export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shortcut }: Props) {
   const [showTooltip, setShowTooltip] = useState(false)
+  const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
+  const showFurigana = useSettingsStore((s) => s.settings.showFurigana)
+  const showRomaji = useSettingsStore((s) => s.settings.showRomaji)
+  const withFurigana = japaneseLevel >= 2 && showFurigana && hasKanji(ja)
 
   return (
     <div className="relative">
@@ -21,20 +29,24 @@ export function NavItem({ id, icon, en, ja, romaji, isActive, onClick, shortcut 
         onClick={onClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className={`
-          w-full flex items-center justify-center
-          h-10 rounded-md mx-1 transition-all duration-fast
-          ${isActive
-            ? 'text-txt-primary bg-reigan-primary/20'
-            : 'text-txt-muted hover:text-txt-secondary hover:bg-white/5'
-          }
-        `}
-        style={{
-          borderLeft: isActive ? '2px solid var(--reigan-primary)' : '2px solid transparent',
-        }}
+        className="relative w-full flex items-center justify-center h-10 mx-1 rounded-[3px] transition-colors duration-fast"
+        style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}
         aria-label={en}
+        aria-current={isActive}
       >
-        {icon}
+        {isActive && (
+          <motion.span
+            layoutId="nav-hanko"
+            className="absolute inset-0 rounded-[3px]"
+            style={{
+              background: 'rgba(216, 67, 42, 0.18)',
+              border: '1px solid var(--reigan-primary)',
+              boxShadow: '0 0 12px rgba(216, 67, 42, 0.25)',
+            }}
+            transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+          />
+        )}
+        <span className="relative z-10">{icon}</span>
       </button>
 
       {showTooltip && (
@@ -49,8 +61,14 @@ export function NavItem({ id, icon, en, ja, romaji, isActive, onClick, shortcut 
           }}
         >
           <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{en}</span>
-          <span style={{ color: 'var(--text-kanji)', fontFamily: 'var(--font-kanji)' }}>{ja}</span>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{romaji}</span>
+          {japaneseLevel >= 1 && (
+            <span style={{ color: 'var(--text-kanji)', fontFamily: 'var(--font-kanji)' }}>
+              {withFurigana ? <FuriganaText text={ja} reading={romaji} /> : ja}
+            </span>
+          )}
+          {japaneseLevel >= 1 && showRomaji && !withFurigana && (
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{romaji}</span>
+          )}
           {shortcut && (
             <span className="mt-1 px-1.5 py-0.5 rounded text-center"
               style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '10px' }}>

@@ -101,7 +101,7 @@ export class ReiganOrb {
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
     if (!this.prefersReducedMotion) {
-      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.3, 0.1)
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(width * 0.5, height * 0.5), 1.5, 0.3, 0.1)
       this.composer.addPass(this.bloomPass)
     }
 

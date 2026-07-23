@@ -13,7 +13,7 @@ export function TaskList({ tasks, onComplete, onDelete }: Props) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
         <span className="text-2xl font-kanji" style={{ color: 'var(--text-kanji)', opacity: 0.3 }}>タスクなし</span>
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet. Ask REIGAN to create one.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No tasks yet. Ask Shingan to create one.</p>
       </div>
     )
   }

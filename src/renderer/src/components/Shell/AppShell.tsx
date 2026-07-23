@@ -6,6 +6,7 @@ import { TaskPanel } from '../Tasks/TaskPanel'
 import { CalendarPanel } from '../Calendar/CalendarPanel'
 import { OrbColumn } from '../Orb/OrbColumn'
 import { useAppStore } from '../../stores/appStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
 
@@ -18,21 +19,24 @@ const PLACEHOLDER_MODULES: Partial<Record<AppModule, { en: string; ja: string; r
 
 function PlaceholderModule({ module }: { module: AppModule }) {
   const info = PLACEHOLDER_MODULES[module]
+  const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
   if (!info) return null
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 select-none">
-      <div
-        className="text-8xl font-kanji"
-        style={{ color: 'var(--text-kanji)', opacity: 0.12 }}
-      >
-        {info.ja}
-      </div>
+      {japaneseLevel >= 1 && (
+        <div
+          className="text-8xl font-kanji"
+          style={{ color: 'var(--text-kanji)', opacity: 0.12 }}
+        >
+          {info.ja}
+        </div>
+      )}
       <div className="flex flex-col items-center gap-1">
         <span className="font-display text-xl font-medium" style={{ color: 'var(--text-secondary)' }}>
           {info.en}
         </span>
         <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
-          Coming soon — 近日公開
+          Coming soon{japaneseLevel >= 1 ? ' — 近日公開' : ''}
         </span>
       </div>
     </div>
@@ -41,6 +45,7 @@ function PlaceholderModule({ module }: { module: AppModule }) {
 
 export function AppShell() {
   const { activeModule } = useAppStore()
+  const showOrbColumn = useSettingsStore((s) => s.settings.showOrbColumn)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
 
   const focusChat = useCallback(() => {
@@ -70,7 +75,7 @@ export function AppShell() {
         <main className="flex-1 overflow-hidden" style={{ background: 'var(--bg-void)' }}>
           {renderModule()}
         </main>
-        <OrbColumn />
+        {showOrbColumn && <OrbColumn />}
       </div>
     </div>
   )

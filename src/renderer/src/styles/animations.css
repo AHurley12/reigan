@@ -20,11 +20,36 @@
 
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  50% { opacity: 0.15; }
+}
+
+@keyframes cursor-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes token-appear {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes stamp-impact {
+  0% { transform: scale(1.6) rotate(-8deg); opacity: 0; }
+  55% { transform: scale(0.94) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 
 .animate-pulse-idle { animation: pulse-idle 4s ease-in-out infinite; }
 .animate-slide-right { animation: slide-in-right var(--duration-slow) var(--ease-spring); }
 .animate-slide-up { animation: slide-up var(--duration-normal) var(--ease-spring); }
 .animate-fade-in { animation: fade-in var(--duration-normal) var(--ease-standard); }
-.animate-cursor { animation: cursor-blink 1s step-end infinite; }
+.animate-cursor { animation: cursor-blink 1s ease-in-out infinite; }
+.animate-cursor-out { animation: cursor-fade-out var(--duration-slow) var(--ease-standard) forwards; }
+.animate-token-in { animation: token-appear 150ms var(--ease-spring) forwards; }
+.animate-spin-slow { animation: spin-slow 3s linear infinite; }
+.animate-stamp { animation: stamp-impact 420ms var(--ease-spring) forwards; }

@@ -1,18 +1,27 @@
-export const APP_NAME = 'REIGAN';
-export const APP_NAME_JP = '霊眼';
+import type { TaskStatus } from './types';
+
+export const APP_NAME = 'Shingan';
+export const APP_NAME_JP = '心眼';
 export const APP_TAGLINE = 'See beyond. Act within.';
 export const APP_VERSION = '0.1.0';
 
 export const DEFAULT_SETTINGS = {
   anthropicApiKey: '',
   japaneseLevel: 1 as const,
+  showFurigana: true,
+  showRomaji: true,
   voiceEnabled: false,
   particleCount: 8000,
-  theme: 'dark' as const,
   deepgramApiKey: '',
   elevenLabsApiKey: '',
   voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam
   pushToTalk: true,
+  ttsStability: 0.5,
+  ttsSimilarity: 0.75,
+  googleClientId: '',
+  googleClientSecret: '',
+  showOrbColumn: true,
+  reducedMotion: false,
 };
 
 export const NAV_ITEMS = [
@@ -31,3 +40,16 @@ export const TASK_COLUMNS = [
   { id: 'review',  en: 'Review',  ja: '確認',   romaji: 'kakunin' },
   { id: 'done',    en: 'Done',    ja: '完了',   romaji: 'kanryou' },
 ] as const;
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = Object.fromEntries(
+  TASK_COLUMNS.map((c) => [c.id, c.ja])
+) as Record<TaskStatus, string>;
+
+export const TASK_STATUS_LABELS_EN: Record<TaskStatus, string> = Object.fromEntries(
+  TASK_COLUMNS.map((c) => [c.id, c.en])
+) as Record<TaskStatus, string>;
+
+/** Japanese only appears once japaneseLevel >= 1 (ambient) — English otherwise. */
+export function taskStatusLabel(status: TaskStatus, japaneseLevel: number): string {
+  return japaneseLevel >= 1 ? TASK_STATUS_LABELS[status] : TASK_STATUS_LABELS_EN[status];
+}

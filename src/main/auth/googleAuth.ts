@@ -114,8 +114,8 @@ class GoogleAuthManager {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(
           error
-            ? '<html><body>Google sign-in failed. You can close this tab and return to REIGAN.</body></html>'
-            : '<html><body>REIGAN is connected. You can close this tab.</body></html>'
+            ? '<html><body>Google sign-in failed. You can close this tab and return to Shingan.</body></html>'
+            : '<html><body>Shingan is connected. You can close this tab.</body></html>'
         )
 
         clearTimeout(timeout)
