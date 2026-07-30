@@ -62,6 +62,15 @@ export function TitleBar() {
       {/* Window controls */}
       <div className="titlebar-no-drag flex items-center gap-1">
         <button
+          onClick={() => window.reigan?.avatar?.toggle?.()}
+          className="w-8 h-6 rounded flex items-center justify-center text-xs hover:bg-white/10 transition-colors"
+          style={{ color: 'var(--text-muted)' }}
+          aria-label="Toggle avatar overlay"
+          title="Toggle avatar overlay"
+        >
+          像
+        </button>
+        <button
           onClick={() => window.reigan?.minimize?.()}
           className="w-8 h-6 rounded flex items-center justify-center text-xs hover:bg-white/10 transition-colors"
           style={{ color: 'var(--text-muted)' }}

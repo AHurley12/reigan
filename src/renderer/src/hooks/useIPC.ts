@@ -30,6 +30,19 @@ declare global {
       calendar: {
         listEvents: (startDate: string, endDate: string) => Promise<{ connected: boolean; events: import('../../../shared/types').CalendarEvent[] }>
       }
+      mail: {
+        listThreads: (params: { category: import('../../../shared/types').MailCategory; unreadOnly?: boolean }) => Promise<{ connected: boolean; threads: import('../../../shared/types').MailThread[] }>
+        categoryCounts: () => Promise<{ connected: boolean; counts: Record<import('../../../shared/types').MailCategory, number> }>
+        getThread: (threadId: string) => Promise<import('../../../shared/types').MailThreadDetail | null>
+        reply: (params: { threadId: string; to: string; subject: string; body: string }) => Promise<{ sent: boolean }>
+        archive: (threadId: string) => Promise<{ archived: boolean }>
+        setRead: (threadId: string, read: boolean) => Promise<{ ok: boolean }>
+      }
+      avatar: {
+        toggle: () => Promise<{ visible: boolean }>
+        sendState: (state: import('../../../shared/types').ReiganState) => void
+        onStateChange: (callback: (state: import('../../../shared/types').ReiganState) => void) => () => void
+      }
       minimize: () => void
       maximize: () => void
       close: () => void

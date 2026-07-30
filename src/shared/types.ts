@@ -2,6 +2,7 @@
 export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'success';
 export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
+export type PersonalityMode = 'standard' | 'unbridled';
 
 // ── Chat ──
 export interface ChatMessage {
@@ -55,6 +56,10 @@ export interface AppSettings {
   googleClientSecret: string;
   showOrbColumn: boolean;
   reducedMotion: boolean;
+  audioInputDeviceId: string;
+  audioOutputDeviceId: string;
+  personalityMode: PersonalityMode;
+  unbridledModeAcknowledged: boolean;
 }
 
 // ── Voice ──
@@ -74,6 +79,38 @@ export interface CalendarEvent {
   start: string; // ISO 8601
   end: string; // ISO 8601
   allDay: boolean;
+}
+
+// ── Mail ──
+// Matches Gmail's own inbox categories (category:primary/social/... search operators).
+export type MailCategory = 'primary' | 'social' | 'promotions' | 'updates' | 'forums';
+
+export interface MailThread {
+  id: string;
+  subject: string;
+  from: string;
+  fromName: string;
+  snippet: string;
+  date: string; // RFC 2822 Date header, rendered client-side
+  unread: boolean;
+  starred: boolean;
+  category: MailCategory;
+  messageCount: number;
+}
+
+export interface MailMessageDetail {
+  id: string;
+  from: string;
+  to: string;
+  date: string;
+  body: string;
+  snippet: string;
+}
+
+export interface MailThreadDetail {
+  id: string;
+  subject: string;
+  messages: MailMessageDetail[];
 }
 
 // ── IPC Channel Names ──
@@ -112,4 +149,14 @@ export const IPC = {
   GOOGLE_DISCONNECT: 'google:disconnect',
   // Calendar
   CALENDAR_LIST_EVENTS: 'calendar:list-events',
+  // Mail
+  MAIL_LIST_THREADS: 'mail:list-threads',
+  MAIL_CATEGORY_COUNTS: 'mail:category-counts',
+  MAIL_GET_THREAD: 'mail:get-thread',
+  MAIL_REPLY: 'mail:reply',
+  MAIL_ARCHIVE: 'mail:archive',
+  MAIL_SET_READ: 'mail:set-read',
+  // Avatar overlay
+  AVATAR_TOGGLE: 'avatar:toggle',
+  AVATAR_STATE_SYNC: 'avatar:state-sync',
 } as const;
