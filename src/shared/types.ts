@@ -156,7 +156,4 @@ export const IPC = {
   MAIL_REPLY: 'mail:reply',
   MAIL_ARCHIVE: 'mail:archive',
   MAIL_SET_READ: 'mail:set-read',
-  // Avatar overlay
-  AVATAR_TOGGLE: 'avatar:toggle',
-  AVATAR_STATE_SYNC: 'avatar:state-sync',
 } as const;

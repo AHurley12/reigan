@@ -1,4 +1,4 @@
-import type { TaskStatus } from './types';
+import type { TaskStatus, ReiganState } from './types';
 
 export const APP_NAME = 'Shingan';
 export const APP_NAME_JP = '心眼';
@@ -22,6 +22,19 @@ export const DEFAULT_SETTINGS = {
   googleClientSecret: '',
   showOrbColumn: true,
   reducedMotion: false,
+  audioInputDeviceId: 'default',
+  audioOutputDeviceId: 'default',
+  personalityMode: 'standard' as const,
+  unbridledModeAcknowledged: false,
+};
+
+export const STATE_COLORS: Record<ReiganState, string> = {
+  idle: '#6B6455',
+  listening: '#23A18C',
+  processing: '#D8432A',
+  speaking: '#C9A227',
+  error: '#E5484D',
+  success: '#23A18C',
 };
 
 export const NAV_ITEMS = [

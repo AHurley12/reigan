@@ -83,17 +83,6 @@ const api = {
     setRead: (threadId: string, read: boolean) => ipcRenderer.invoke(IPC.MAIL_SET_READ, { threadId, read }),
   },
 
-  // Avatar overlay
-  avatar: {
-    toggle: () => ipcRenderer.invoke(IPC.AVATAR_TOGGLE),
-    sendState: (state: string) => ipcRenderer.send(IPC.AVATAR_STATE_SYNC, state),
-    onStateChange: (callback: (state: string) => void) => {
-      const handler = (_: unknown, state: string) => callback(state)
-      ipcRenderer.on(IPC.AVATAR_STATE_SYNC, handler)
-      return () => ipcRenderer.removeListener(IPC.AVATAR_STATE_SYNC, handler)
-    },
-  },
-
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

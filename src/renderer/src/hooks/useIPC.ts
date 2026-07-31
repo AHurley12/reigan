@@ -38,11 +38,6 @@ declare global {
         archive: (threadId: string) => Promise<{ archived: boolean }>
         setRead: (threadId: string, read: boolean) => Promise<{ ok: boolean }>
       }
-      avatar: {
-        toggle: () => Promise<{ visible: boolean }>
-        sendState: (state: import('../../../shared/types').ReiganState) => void
-        onStateChange: (callback: (state: import('../../../shared/types').ReiganState) => void) => () => void
-      }
       minimize: () => void
       maximize: () => void
       close: () => void

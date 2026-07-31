@@ -21,14 +21,6 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    build: {
-      rollupOptions: {
-        input: {
-          index: resolve('src/renderer/index.html'),
-          avatar: resolve('src/renderer/avatar.html')
-        }
-      }
-    },
     plugins: [react()]
   }
 })

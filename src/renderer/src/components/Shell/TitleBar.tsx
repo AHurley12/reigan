@@ -2,16 +2,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { stateLabel } from '../../i18n/ja'
 import { HankoMark } from '../shared/HankoMark'
-import type { ReiganState } from '../../../../shared/types'
-
-const STATE_COLORS: Record<ReiganState, string> = {
-  idle: '#6B6455',
-  listening: '#23A18C',
-  processing: '#D8432A',
-  speaking: '#C9A227',
-  error: '#E5484D',
-  success: '#23A18C',
-}
+import { STATE_COLORS } from '../../../../shared/constants'
 
 function EnsoRing({ color, spinning }: { color: string; spinning: boolean }) {
   return (
@@ -61,15 +52,6 @@ export function TitleBar() {
 
       {/* Window controls */}
       <div className="titlebar-no-drag flex items-center gap-1">
-        <button
-          onClick={() => window.reigan?.avatar?.toggle?.()}
-          className="w-8 h-6 rounded flex items-center justify-center text-xs hover:bg-white/10 transition-colors"
-          style={{ color: 'var(--text-muted)' }}
-          aria-label="Toggle avatar overlay"
-          title="Toggle avatar overlay"
-        >
-          像
-        </button>
         <button
           onClick={() => window.reigan?.minimize?.()}
           className="w-8 h-6 rounded flex items-center justify-center text-xs hover:bg-white/10 transition-colors"

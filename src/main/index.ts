@@ -9,8 +9,6 @@ import { registerGoogleHandlers } from './ipc/google'
 import { registerCalendarHandlers } from './ipc/calendar'
 import { registerMailHandlers } from './ipc/mail'
 import { getDatabase, closeDatabase } from './db/database'
-import { createAvatarOverlayWindow, getAvatarOverlayWindow, toggleAvatarOverlayWindow } from './windows/avatarOverlay'
-import { IPC } from '../shared/types'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -70,13 +68,6 @@ app.whenReady().then(() => {
   getDatabase()
 
   const mainWindow = createWindow()
-  createAvatarOverlayWindow()
-
-  // Avatar overlay IPC — relay agent state from the main window to the overlay window
-  ipcMain.handle(IPC.AVATAR_TOGGLE, () => toggleAvatarOverlayWindow())
-  ipcMain.on(IPC.AVATAR_STATE_SYNC, (_event, state) => {
-    getAvatarOverlayWindow()?.webContents.send(IPC.AVATAR_STATE_SYNC, state)
-  })
 
   // Register all IPC handlers
   registerLLMHandlers(mainWindow)

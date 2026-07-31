@@ -4,7 +4,6 @@ import { SettingsPanel } from './components/Shell/SettingsPanel'
 import { useIPC } from './hooks/useIPC'
 import { useVoice } from './hooks/useVoice'
 import { useReducedMotion } from './hooks/useReducedMotion'
-import { useAvatarOverlaySync } from './hooks/useAvatarOverlaySync'
 import { useSettingsStore } from './stores/settingsStore'
 import { useChatStore } from './stores/chatStore'
 
@@ -13,7 +12,6 @@ export default function App() {
 
   useVoice()
   useReducedMotion()
-  useAvatarOverlaySync()
 
   useEffect(() => {
     useSettingsStore.getState().hydrate()
