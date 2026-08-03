@@ -38,6 +38,15 @@ declare global {
         archive: (threadId: string) => Promise<{ archived: boolean }>
         setRead: (threadId: string, read: boolean) => Promise<{ ok: boolean }>
       }
+      files: {
+        listDir: (dirPath?: string) => Promise<import('../../../shared/types').FileEntry[]>
+        search: (params: import('../../../shared/types').FileSearchParams) => Promise<import('../../../shared/types').FileEntry[]>
+        indexStatus: () => Promise<import('../../../shared/types').FileIndexStatus>
+        reindex: () => Promise<{ started: boolean }>
+        readContent: (filePath: string) => Promise<{ content: string; truncated: boolean } | null>
+        open: (filePath: string) => Promise<{ opened: boolean }>
+        reveal: (filePath: string) => Promise<{ revealed: boolean }>
+      }
       minimize: () => void
       maximize: () => void
       close: () => void

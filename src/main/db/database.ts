@@ -68,6 +68,38 @@ function runInlineSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+
+    CREATE TABLE IF NOT EXISTS files_index (
+      id INTEGER PRIMARY KEY,
+      path TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      dir TEXT NOT NULL,
+      ext TEXT NOT NULL DEFAULT '',
+      size INTEGER NOT NULL DEFAULT 0,
+      mtime INTEGER NOT NULL DEFAULT 0,
+      is_dir INTEGER NOT NULL DEFAULT 0,
+      indexed_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_files_ext ON files_index(ext);
+    CREATE INDEX IF NOT EXISTS idx_files_mtime ON files_index(mtime);
+    CREATE INDEX IF NOT EXISTS idx_files_dir ON files_index(dir);
+    CREATE INDEX IF NOT EXISTS idx_files_indexed_at ON files_index(indexed_at);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+      name, content='files_index', content_rowid='id', tokenize='unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS files_index_ai AFTER INSERT ON files_index BEGIN
+      INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
+    END;
+    CREATE TRIGGER IF NOT EXISTS files_index_ad AFTER DELETE ON files_index BEGIN
+      INSERT INTO files_fts(files_fts, rowid, name) VALUES('delete', old.id, old.name);
+    END;
+    CREATE TRIGGER IF NOT EXISTS files_index_au AFTER UPDATE ON files_index BEGIN
+      INSERT INTO files_fts(files_fts, rowid, name) VALUES('delete', old.id, old.name);
+      INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
+    END;
   `)
 }
 

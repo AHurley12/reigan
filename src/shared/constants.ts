@@ -1,4 +1,4 @@
-import type { TaskStatus, ReiganState } from './types';
+import type { TaskStatus, ReiganState, FileTypeCategoryId } from './types';
 
 export const APP_NAME = 'Shingan';
 export const APP_NAME_JP = '心眼';
@@ -65,4 +65,24 @@ export const TASK_STATUS_LABELS_EN: Record<TaskStatus, string> = Object.fromEntr
 /** Japanese only appears once japaneseLevel >= 1 (ambient) — English otherwise. */
 export function taskStatusLabel(status: TaskStatus, japaneseLevel: number): string {
   return japaneseLevel >= 1 ? TASK_STATUS_LABELS[status] : TASK_STATUS_LABELS_EN[status];
+}
+
+// ── Files ──
+export const FILE_TYPE_CATEGORIES: Array<{ id: FileTypeCategoryId; en: string; ja: string; exts?: string[] }> = [
+  { id: 'all', en: 'All', ja: '全て' },
+  { id: 'documents', en: 'Documents', ja: '文書', exts: ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'] },
+  { id: 'images', en: 'Images', ja: '画像', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'heic', 'tiff', 'ico'] },
+  { id: 'code', en: 'Code', ja: 'コード', exts: ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'html', 'css', 'scss', 'json', 'yml', 'yaml', 'sql', 'sh', 'ps1'] },
+  { id: 'media', en: 'Media', ja: 'メディア', exts: ['mp3', 'mp4', 'wav', 'mov', 'avi', 'mkv', 'flac', 'm4a', 'wmv', 'ogg'] },
+  { id: 'archives', en: 'Archives', ja: '圧縮', exts: ['zip', 'rar', '7z', 'tar', 'gz'] },
+  { id: 'other', en: 'Other', ja: 'その他' },
+];
+
+const EXT_TO_CATEGORY: Record<string, FileTypeCategoryId> = Object.fromEntries(
+  FILE_TYPE_CATEGORIES.flatMap((c) => (c.exts ?? []).map((ext) => [ext, c.id]))
+);
+
+/** Classifies a lowercase, dot-free extension into a filter category (defaults to 'other'). */
+export function categorizeExt(ext: string): FileTypeCategoryId {
+  return EXT_TO_CATEGORY[ext.toLowerCase()] ?? 'other';
 }

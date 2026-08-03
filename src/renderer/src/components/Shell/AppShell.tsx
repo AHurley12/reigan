@@ -4,6 +4,7 @@ import { NavBar } from '../Nav/NavBar'
 import { ChatPanel } from '../Chat/ChatPanel'
 import { TaskPanel } from '../Tasks/TaskPanel'
 import { CalendarPanel } from '../Calendar/CalendarPanel'
+import { FilesPanel } from '../Files/FilesPanel'
 import { OrbColumn } from '../Orb/OrbColumn'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -11,7 +12,6 @@ import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
 
 const PLACEHOLDER_MODULES: Partial<Record<AppModule, { en: string; ja: string; romaji: string }>> = {
-  files:       { en: 'Files',       ja: 'ファイル',   romaji: 'fairu' },
   mail:        { en: 'Mail',        ja: 'メール',     romaji: 'meeru' },
   automations: { en: 'Automations', ja: '自動化',     romaji: 'jidouka' },
   dev:         { en: 'Dev Tools',   ja: '開発',       romaji: 'kaihatsu' },
@@ -62,6 +62,8 @@ export function AppShell() {
         return <TaskPanel />
       case 'calendar':
         return <CalendarPanel />
+      case 'files':
+        return <FilesPanel />
       default:
         return <PlaceholderModule module={activeModule} />
     }

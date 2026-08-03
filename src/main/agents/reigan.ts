@@ -8,6 +8,7 @@ import { createTaskTool, listTasksTool, updateTaskTool, completeTaskTool } from 
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
+import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getSetting } from '../db/queries'
 
@@ -18,7 +19,11 @@ function getApiKey(): string {
 }
 
 function getTools(): DynamicStructuredTool[] {
-  const tools: DynamicStructuredTool[] = [createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, getTimeTool, getSystemInfoTool, openAppTool]
+  const tools: DynamicStructuredTool[] = [
+    createTaskTool, listTasksTool, updateTaskTool, completeTaskTool,
+    getTimeTool, getSystemInfoTool, openAppTool,
+    searchFilesTool, listDirectoryTool, readFileTool,
+  ]
 
   // Only exposed once the user has connected a Google account (Settings).
   const googleClient = googleAuth.getClient()

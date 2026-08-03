@@ -8,6 +8,8 @@ import { registerVoiceHandlers } from './ipc/voice'
 import { registerGoogleHandlers } from './ipc/google'
 import { registerCalendarHandlers } from './ipc/calendar'
 import { registerMailHandlers } from './ipc/mail'
+import { registerFileHandlers } from './ipc/files'
+import { runFullIndex } from './files/fileIndexer'
 import { getDatabase, closeDatabase } from './db/database'
 
 function createWindow(): BrowserWindow {
@@ -77,6 +79,10 @@ app.whenReady().then(() => {
   registerGoogleHandlers()
   registerCalendarHandlers()
   registerMailHandlers()
+  registerFileHandlers()
+
+  // Background file index build — non-blocking, renderer polls FILES_INDEX_STATUS.
+  runFullIndex().catch(() => {})
 
   // Window control IPC
   ipcMain.on('window:minimize', () => mainWindow.minimize())

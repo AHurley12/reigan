@@ -113,6 +113,36 @@ export interface MailThreadDetail {
   messages: MailMessageDetail[];
 }
 
+// ── Files ──
+export type FileTypeCategoryId = 'all' | 'documents' | 'images' | 'code' | 'media' | 'archives' | 'other';
+
+export interface FileEntry {
+  path: string;
+  name: string;
+  dir: string;
+  ext: string;
+  size: number;
+  mtime: number; // ms since epoch
+  isDir: boolean;
+}
+
+export interface FileSearchParams {
+  query: string;
+  category?: FileTypeCategoryId;
+  modifiedAfter?: number; // ms since epoch
+  sortBy?: 'name' | 'modified' | 'size';
+  sortDir?: 'asc' | 'desc';
+  limit?: number;
+}
+
+export interface FileIndexStatus {
+  indexing: boolean;
+  filesIndexed: number;
+  lastIndexedAt: number | null;
+  error: string | null;
+  homeDir: string;
+}
+
 // ── IPC Channel Names ──
 export const IPC = {
   // LLM
@@ -156,4 +186,12 @@ export const IPC = {
   MAIL_REPLY: 'mail:reply',
   MAIL_ARCHIVE: 'mail:archive',
   MAIL_SET_READ: 'mail:set-read',
+  // Files (read-only browse/search — see src/main/files/fileIndexer.ts for scope rules)
+  FILES_LIST_DIR: 'files:list-dir',
+  FILES_SEARCH: 'files:search',
+  FILES_INDEX_STATUS: 'files:index-status',
+  FILES_REINDEX: 'files:reindex',
+  FILES_READ_CONTENT: 'files:read-content',
+  FILES_OPEN: 'files:open',
+  FILES_REVEAL: 'files:reveal',
 } as const;

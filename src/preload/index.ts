@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '../shared/types'
+import { IPC, type FileSearchParams } from '../shared/types'
 
 const api = {
   // LLM
@@ -81,6 +81,17 @@ const api = {
       ipcRenderer.invoke(IPC.MAIL_REPLY, params),
     archive: (threadId: string) => ipcRenderer.invoke(IPC.MAIL_ARCHIVE, threadId),
     setRead: (threadId: string, read: boolean) => ipcRenderer.invoke(IPC.MAIL_SET_READ, { threadId, read }),
+  },
+
+  // Files (read-only browse/search)
+  files: {
+    listDir: (dirPath?: string) => ipcRenderer.invoke(IPC.FILES_LIST_DIR, dirPath),
+    search: (params: FileSearchParams) => ipcRenderer.invoke(IPC.FILES_SEARCH, params),
+    indexStatus: () => ipcRenderer.invoke(IPC.FILES_INDEX_STATUS),
+    reindex: () => ipcRenderer.invoke(IPC.FILES_REINDEX),
+    readContent: (filePath: string) => ipcRenderer.invoke(IPC.FILES_READ_CONTENT, filePath),
+    open: (filePath: string) => ipcRenderer.invoke(IPC.FILES_OPEN, filePath),
+    reveal: (filePath: string) => ipcRenderer.invoke(IPC.FILES_REVEAL, filePath),
   },
 
   // Window controls
