@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { OrbState, OrbParams, AudioData, ColorShift } from './types'
 import { STATE_PRESETS } from './colorPresets'
+import { lerpHue } from './colorMath'
 
 const PARAM_KEYS: (keyof OrbParams)[] = [
   'nebulaSize',
@@ -19,19 +20,16 @@ const PARAM_LERP_FACTOR = 0.04
 const AUDIO_INFLUENCE_DECAY = 0.09 // ~500ms to settle at 60fps
 const AUTO_RETURN_STATES: OrbState[] = ['error', 'success']
 const AUTO_RETURN_DELAY_MS = 2000
+// Mic capture now runs on the audio thread via AudioWorklet (not the main
+// thread), so this throttle is a secondary courtesy to reduce main-thread
+// load while listening, not the primary defense against audio glitches —
+// it can afford to stay close to full rate.
+const THROTTLED_FRAME_INTERVAL_MS = 1000 / 30
 
 // Original petal hue formula used coefficients 0.085 (layer term) and 0.018
 // (turbulence term); this ratio is preserved so the palette shift keeps the
 // same relative texture as the source formation.
 const PETAL_SECONDARY_HUE_RATIO = 0.018 / 0.085
-
-function lerpHue(current: number, target: number, factor: number): number {
-  let delta = target - current
-  delta -= Math.round(delta)
-  let next = current + delta * factor
-  next -= Math.floor(next)
-  return next
-}
 
 function lerpColors(current: ColorShift, target: ColorShift, factor: number): void {
   current.petalHueBase = lerpHue(current.petalHueBase, target.petalHueBase, factor)
@@ -76,6 +74,13 @@ export class ReiganOrb {
 
   private audioData: AudioData = { amplitude: 0, bass: 0, mid: 0, high: 0 }
   private audioInfluence = 0
+
+  // While listening, mic capture shares the main thread with this render
+  // loop — the per-particle math plus bloom composite is the expensive part,
+  // so cap it to a low rate instead of running full tilt at 60fps and
+  // risking audio buffer underruns/duplication.
+  private throttled = false
+  private lastThrottledRender = 0
 
   constructor(container: HTMLElement, particleCount = 8000) {
     this.container = container
@@ -171,6 +176,10 @@ export class ReiganOrb {
     this.audioData = data
   }
 
+  setThrottled(throttled: boolean): void {
+    this.throttled = throttled
+  }
+
   setParams(params: Partial<OrbParams>): void {
     this.targetParams = { ...this.targetParams, ...params }
   }
@@ -208,6 +217,13 @@ export class ReiganOrb {
 
   private animate(): void {
     this.animationFrameId = requestAnimationFrame(this.animate)
+
+    if (this.throttled) {
+      const now = performance.now()
+      if (now - this.lastThrottledRender < THROTTLED_FRAME_INTERVAL_MS) return
+      this.lastThrottledRender = now
+    }
+
     const time = this.clock.getElapsedTime()
 
     for (const key of PARAM_KEYS) {

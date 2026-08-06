@@ -141,6 +141,22 @@ export function getSetting(key: string): string | null {
   return row ? row.value : null
 }
 
+// Renderer settings are JSON-encoded before being sent over IPC (settingsStore.ts)
+// so numbers/booleans round-trip with their type. Callers reading a string-valued
+// setting directly (bypassing the renderer's decode step) need this to strip the
+// resulting wrapping quotes. Only unwraps actual JSON strings; anything else
+// (legacy unquoted rows, JSON objects like googleTokens) passes through unchanged.
+export function getDecodedSetting(key: string): string | null {
+  const raw = getSetting(key)
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'string' ? parsed : raw
+  } catch {
+    return raw
+  }
+}
+
 export function setSetting(key: string, value: string): void {
   const db = getDatabase()
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)

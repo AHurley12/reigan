@@ -44,7 +44,7 @@ export interface AppSettings {
   japaneseLevel: JapaneseLevel;
   showFurigana: boolean;
   showRomaji: boolean;
-  voiceEnabled: boolean;
+  voiceResponseMode: 'always' | 'conversational' | 'off';
   particleCount: number;
   deepgramApiKey: string;
   elevenLabsApiKey: string;
@@ -164,6 +164,7 @@ export const IPC = {
   // Voice
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',
+  VOICE_STOP_SPEAKING: 'voice:stop-speaking',
   VOICE_AUDIO_CHUNK: 'voice:audio-chunk',
   VOICE_AMPLITUDE: 'voice:amplitude',
   VOICE_TRANSCRIPT: 'voice:transcript',

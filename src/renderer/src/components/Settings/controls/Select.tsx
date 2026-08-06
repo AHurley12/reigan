@@ -31,30 +31,32 @@ export function Select({ value, options, onChange }: Props) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors"
+        title={current?.label ?? value}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors max-w-[200px]"
         style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
       >
-        <span>{current?.label ?? value}</span>
-        <ChevronDown size={12} style={{ color: 'var(--text-muted)' }} />
+        <span className="truncate min-w-0">{current?.label ?? value}</span>
+        <ChevronDown size={12} className="shrink-0" style={{ color: 'var(--text-muted)' }} />
       </button>
 
       {open && (
         <div
-          className="absolute right-0 mt-1 z-50 rounded-lg overflow-hidden animate-fade-in"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)', minWidth: 160, maxHeight: 200, overflowY: 'auto' }}
+          className="absolute right-0 mt-1.5 z-50 rounded-lg overflow-hidden animate-fade-in py-1.5"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', minWidth: 180, maxWidth: 280, maxHeight: 280, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}
         >
           {options.map((o) => (
             <button
               key={o.value}
               onClick={() => { onChange(o.value); setOpen(false) }}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left transition-colors hover:bg-white/5"
+              title={o.label}
+              className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs text-left transition-colors hover:bg-white/5"
               style={{ color: o.value === value ? 'var(--text-primary)' : 'var(--text-secondary)' }}
             >
-              <span className="flex flex-col">
-                <span>{o.label}</span>
+              <span className="flex flex-col min-w-0 gap-0.5">
+                <span className="truncate">{o.label}</span>
                 {o.labelJa && <span className="text-[10px] font-kanji" style={{ color: 'var(--text-kanji)' }}>{o.labelJa}</span>}
               </span>
-              {o.value === value && <Check size={12} style={{ color: 'var(--reigan-primary)' }} />}
+              {o.value === value && <Check size={12} className="shrink-0" style={{ color: 'var(--reigan-primary)' }} />}
             </button>
           ))}
         </div>

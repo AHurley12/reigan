@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, globalShortcut } from 'electron'
 import { IPC } from '../../shared/types'
-import { getSetting } from '../db/queries'
+import { getDecodedSetting } from '../db/queries'
 import { voiceManager, type VoiceState } from '../voice/voiceManager'
 
 const PUSH_TO_TALK_ACCELERATOR = 'CommandOrControl+Shift+Space'
@@ -22,11 +22,15 @@ export function registerVoiceHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle(IPC.VOICE_START, () => {
-    voiceManager.startListening(getSetting('deepgramApiKey') ?? '')
+    voiceManager.startListening(getDecodedSetting('deepgramApiKey') ?? '')
   })
 
   ipcMain.handle(IPC.VOICE_STOP, () => {
     voiceManager.stopListening()
+  })
+
+  ipcMain.handle(IPC.VOICE_STOP_SPEAKING, () => {
+    voiceManager.stopSpeaking()
   })
 
   ipcMain.on(IPC.VOICE_AUDIO_CHUNK, (_event, buffer: ArrayBuffer) => {
@@ -53,7 +57,7 @@ export function registerVoiceHandlers(mainWindow: BrowserWindow): void {
     if (voiceManager.getIsListening()) {
       voiceManager.stopListening()
     } else {
-      voiceManager.startListening(getSetting('deepgramApiKey') ?? '')
+      voiceManager.startListening(getDecodedSetting('deepgramApiKey') ?? '')
     }
   })
 

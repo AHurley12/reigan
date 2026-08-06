@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useVoiceStore } from '../stores/voiceStore'
-import { initVoiceListeners, startVoice, stopVoice } from '../voice/voiceController'
+import { initVoiceListeners, startVoice, stopVoice, skipVoiceResponse } from '../voice/voiceController'
 
 /** Mount once at the app root — wires voice IPC events for the whole session. */
 export function useVoice(): void {
@@ -11,5 +11,5 @@ export function useVoice(): void {
 export function useVoiceControls() {
   const isActive = useVoiceStore((s) => s.isActive)
   const transcript = useVoiceStore((s) => s.transcript)
-  return { isActive, transcript, startVoice, stopVoice }
+  return { isActive, transcript, startVoice, stopVoice, skipVoiceResponse }
 }

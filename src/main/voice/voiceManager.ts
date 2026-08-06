@@ -1,5 +1,21 @@
 import { SpeechToText } from './speechToText'
 import { TextToSpeech } from './textToSpeech'
+import { prepareForSpeech } from './prepareSpeech'
+
+// Failsafe: if ElevenLabs stalls mid-stream (hung connection, runaway
+// generation) instead of erroring outright, don't let the app sit in
+// "speaking" state forever — bail out and return to idle.
+const TTS_CHUNK_TIMEOUT_MS = 15_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('TTS stream stalled — no audio received in time.')), ms)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (err) => { clearTimeout(timer); reject(err) }
+    )
+  })
+}
 
 export type VoiceState = 'idle' | 'listening' | 'speaking' | 'error'
 
@@ -21,6 +37,7 @@ export class VoiceManager {
   private ttsVoiceId: string | undefined
   private isListening = false
   private expectSpokenReply = false
+  private speakCancelled = false
   private callbacks: VoiceManagerCallbacks | null = null
 
   setCallbacks(callbacks: VoiceManagerCallbacks): void {
@@ -81,7 +98,11 @@ export class VoiceManager {
     text: string,
     config: { elevenLabsApiKey: string; voiceId?: string; stability?: number; similarityBoost?: number }
   ): Promise<void> {
-    if (!config.elevenLabsApiKey || !text.trim()) return
+    if (!text.trim()) return
+    if (!config.elevenLabsApiKey) {
+      this.callbacks?.onError(new Error('No ElevenLabs API key configured. Add it in Settings to hear spoken replies.'))
+      return
+    }
 
     // Avoid transcribing our own voice back through the mic.
     if (this.isListening) this.stopListening()
@@ -90,19 +111,43 @@ export class VoiceManager {
       this.tts = new TextToSpeech(config.elevenLabsApiKey, config.voiceId)
       this.ttsVoiceId = config.voiceId
     }
-    this.tts.setVoiceSettings(config.stability ?? 0.5, config.similarityBoost ?? 0.75)
+    this.tts.setVoiceSettings(config.stability ?? 0.7, config.similarityBoost ?? 0.75)
 
+    // Speak only the text the user will actually see, in one language —
+    // strips markdown and the bilingual (romaji/English) gloss so the model
+    // isn't asked to pronounce the same idea twice in different scripts.
+    const { text: speechText, languageCode } = prepareForSpeech(text)
+    if (!speechText) return
+
+    this.speakCancelled = false
     this.callbacks?.onStateChange('speaking')
     try {
-      for await (const chunk of this.tts.speakStream(text)) {
+      const stream = this.tts.speakStream(speechText, languageCode)
+      while (true) {
+        const { value: chunk, done } = await withTimeout(stream.next(), TTS_CHUNK_TIMEOUT_MS)
+        if (done) break
+        if (this.speakCancelled) {
+          await stream.return?.(undefined)
+          break
+        }
         this.callbacks?.onAudio(chunk)
       }
     } catch (err) {
-      this.callbacks?.onError(err as Error)
+      const statusCode = (err as { statusCode?: number; status?: number })?.statusCode ?? (err as { status?: number })?.status
+      const message =
+        statusCode === 402
+          ? 'ElevenLabs rejected this request (402) — either this voice isn\'t included in your plan, or you\'re out of character quota. Try a different voice in Settings, or check your ElevenLabs account.'
+          : (err as Error).message
+      this.callbacks?.onError(new Error(message))
       this.callbacks?.onStateChange('error')
       return
     }
     this.callbacks?.onStateChange('idle')
+  }
+
+  /** Skip the in-progress spoken reply — stops generating further audio and returns to idle. */
+  stopSpeaking(): void {
+    this.speakCancelled = true
   }
 }
 

@@ -73,6 +73,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sendMessage: async (text) => {
     const ipc = window.reigan
     if (!ipc) return
+    // Voice can fire multiple "final" transcript segments in quick succession
+    // (e.g. holding push-to-talk). Without this guard, a second send while one
+    // is still streaming overwrites streamingId and orphans the first message
+    // mid-stream — it never gets its `done` event, so its cursor never clears.
+    if (get().isStreaming) return
 
     const history = get().messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
     get().addUserMessage(text)

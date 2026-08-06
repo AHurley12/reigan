@@ -23,6 +23,9 @@ export function VoiceOrb() {
 
   useEffect(() => {
     orbRef.current?.setState(reiganState)
+    // Mic capture shares the main thread with this render loop while
+    // listening — throttle so heavy frames can't starve audio chunks.
+    orbRef.current?.setThrottled(reiganState === 'listening')
   }, [reiganState])
 
   useEffect(() => {
