@@ -168,10 +168,73 @@ export function setSetting(key: string, value: string): void {
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, stored)
 }
 
+/**
+ * Every setting, credentials decrypted. **Main process only.**
+ *
+ * Do not hand the result to the renderer — see `getSettingsForRenderer()`.
+ */
 export function getAllSettings(): Record<string, string> {
   const db = getDatabase()
   const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
   return Object.fromEntries(
     rows.map((r) => [r.key, isSecretKey(r.key) ? decryptSecret(r.value) : r.value])
   )
+}
+
+/**
+ * The renderer's view: identical, except credential values are blanked.
+ *
+ * Encrypting secrets at rest accomplishes little while the renderer is still
+ * handed the plaintext at startup — the database stops being the soft target
+ * and the renderer heap becomes one instead, reachable by any compromised
+ * dependency in the React tree. The renderer has no legitimate use for these
+ * values: it displays them masked and posts replacements back. So it gets an
+ * empty string and, separately, a preview (see `getSecretPreviews()`).
+ *
+ * Blank rather than a mask string on purpose. A mask that round-trips through
+ * a save would overwrite the real key with bullet characters; an empty value
+ * is unambiguous, and the save path already treats it as "no change".
+ */
+export function getSettingsForRenderer(): Record<string, string> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  return Object.fromEntries(rows.map((r) => [r.key, isSecretKey(r.key) ? '' : r.value]))
+}
+
+export interface SecretPreview {
+  hasValue: boolean
+  /** Last 4 characters, enough to recognise a key without disclosing it. */
+  last4: string
+}
+
+/**
+ * What the UI needs to say "a key is saved, and it ends 4f2a" without ever
+ * holding the key. Four characters is not enough to be useful to an attacker
+ * and is enough for the user to tell two of their own keys apart.
+ */
+export function getSecretPreviews(): Record<string, SecretPreview> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  const out: Record<string, SecretPreview> = {}
+  for (const row of rows) {
+    if (!isSecretKey(row.key)) continue
+    const plain = decryptSecret(row.value)
+    // Values arrive JSON-encoded from the renderer; strip the quotes so the
+    // preview reflects the key itself rather than a trailing `"`.
+    const unwrapped = unwrapJsonString(plain)
+    out[row.key] = {
+      hasValue: unwrapped.length > 0,
+      last4: unwrapped.length > 4 ? unwrapped.slice(-4) : '',
+    }
+  }
+  return out
+}
+
+function unwrapJsonString(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'string' ? parsed : raw
+  } catch {
+    return raw
+  }
 }

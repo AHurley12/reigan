@@ -244,6 +244,9 @@ export const IPC = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_LOAD_ALL: 'settings:load-all',
+  // Credential metadata (hasValue + last 4). The values themselves never
+  // cross to the renderer — see db/queries.ts getSettingsForRenderer().
+  SETTINGS_SECRET_PREVIEWS: 'settings:secret-previews',
   // Voice
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',

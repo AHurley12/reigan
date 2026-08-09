@@ -245,6 +245,327 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 5,
+    name: 'capability-audit-log',
+    // The `approvals` table records decisions, which is not the same as
+    // recording actions: a read capability, or a write the user has pre-approved,
+    // leaves no trace there at all. This logs *every* dispatch, so "what did the
+    // assistant actually do" has an answer that does not depend on whether the
+    // action happened to need a prompt.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS capability_audit (
+          id TEXT PRIMARY KEY,
+          capability_id TEXT NOT NULL,
+          /* 'ui' | 'agent' | 'job' — who initiated, not who owns the app. */
+          invoked_by TEXT NOT NULL,
+          args_json TEXT,
+          outcome TEXT NOT NULL
+            CHECK (outcome IN ('ok', 'error', 'denied', 'awaiting_approval')),
+          error_code TEXT,
+          error TEXT,
+          duration_ms INTEGER NOT NULL DEFAULT 0,
+          invoked_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cap_audit_time ON capability_audit(invoked_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_cap_audit_cap ON capability_audit(capability_id, invoked_at DESC);
+      `)
+    },
+  },
+
+  {
+    version: 6,
+    name: 'devtools-project-scanner',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          /* active <=14d, warm 15-60, dormant 61-180, abandoned 180+ */
+          status TEXT NOT NULL DEFAULT 'dormant'
+            CHECK (status IN ('active', 'warm', 'dormant', 'abandoned')),
+          primary_language TEXT,
+          languages_json TEXT NOT NULL DEFAULT '{}',
+          frameworks_json TEXT NOT NULL DEFAULT '[]',
+          package_manager TEXT,
+          last_modified INTEGER,
+          last_commit_at INTEGER,
+          branch TEXT,
+          is_dirty INTEGER NOT NULL DEFAULT 0,
+          unpushed_count INTEGER NOT NULL DEFAULT 0,
+          readme_status TEXT NOT NULL DEFAULT 'missing'
+            CHECK (readme_status IN ('exists', 'missing', 'stub')),
+          loc INTEGER NOT NULL DEFAULT 0,
+          size_bytes INTEGER NOT NULL DEFAULT 0,
+          size_bytes_no_deps INTEGER NOT NULL DEFAULT 0,
+          has_tests INTEGER NOT NULL DEFAULT 0,
+          remote_url TEXT,
+          github_repo_id TEXT,
+          first_seen INTEGER NOT NULL,
+          last_scanned INTEGER NOT NULL,
+          notes TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+        CREATE INDEX IF NOT EXISTS idx_projects_modified ON projects(last_modified DESC);
+        CREATE INDEX IF NOT EXISTS idx_projects_remote ON projects(remote_url);
+
+        CREATE TABLE IF NOT EXISTS scan_runs (
+          id TEXT PRIMARY KEY,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER,
+          roots_json TEXT NOT NULL DEFAULT '[]',
+          dirs_walked INTEGER NOT NULL DEFAULT 0,
+          projects_found INTEGER NOT NULL DEFAULT 0,
+          error TEXT
+        );
+
+        /* Incremental rescan: skip a tree whose root mtime has not moved. */
+        CREATE TABLE IF NOT EXISTS scan_root_state (
+          root TEXT PRIMARY KEY,
+          last_mtime INTEGER NOT NULL DEFAULT 0,
+          last_scanned INTEGER NOT NULL DEFAULT 0
+        );
+      `)
+    },
+  },
+
+  {
+    version: 7,
+    name: 'devtools-github',
+    // Cached wholesale so every UI read is local and the tab works offline.
+    // `synced_at` per row is what makes a conditional (ETag) refresh meaningful.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS github_repos (
+          id TEXT PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          name TEXT NOT NULL,
+          private INTEGER NOT NULL DEFAULT 0,
+          description TEXT,
+          default_branch TEXT,
+          language TEXT,
+          pushed_at INTEGER,
+          open_issues INTEGER NOT NULL DEFAULT 0,
+          stars INTEGER NOT NULL DEFAULT 0,
+          forks INTEGER NOT NULL DEFAULT 0,
+          archived INTEGER NOT NULL DEFAULT 0,
+          license TEXT,
+          topics_json TEXT NOT NULL DEFAULT '[]',
+          html_url TEXT,
+          clone_url TEXT,
+          local_project_id TEXT,
+          synced_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gh_repos_pushed ON github_repos(pushed_at DESC);
+
+        CREATE TABLE IF NOT EXISTS github_issues (
+          id TEXT PRIMARY KEY,
+          repo_id TEXT NOT NULL,
+          number INTEGER NOT NULL,
+          type TEXT NOT NULL CHECK (type IN ('issue', 'pr')),
+          title TEXT NOT NULL,
+          state TEXT NOT NULL,
+          labels_json TEXT NOT NULL DEFAULT '[]',
+          assignee TEXT,
+          author TEXT,
+          created_at INTEGER,
+          updated_at INTEGER,
+          url TEXT,
+          ci_status TEXT,
+          review_state TEXT,
+          draft INTEGER NOT NULL DEFAULT 0,
+          synced_at INTEGER,
+          FOREIGN KEY (repo_id) REFERENCES github_repos(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gh_issues_repo ON github_issues(repo_id, state);
+        CREATE INDEX IF NOT EXISTS idx_gh_issues_updated ON github_issues(updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS github_commits (
+          sha TEXT PRIMARY KEY,
+          repo_id TEXT NOT NULL,
+          message TEXT,
+          author TEXT,
+          committed_at INTEGER,
+          additions INTEGER,
+          deletions INTEGER,
+          FOREIGN KEY (repo_id) REFERENCES github_repos(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gh_commits_repo ON github_commits(repo_id, committed_at DESC);
+
+        /* ETag store for conditional requests — an unchanged resource costs
+           zero rate-limit quota, which is the difference between syncing
+           hourly and burning the 5000/hr budget by lunchtime. */
+        CREATE TABLE IF NOT EXISTS github_etags (
+          url TEXT PRIMARY KEY,
+          etag TEXT NOT NULL,
+          fetched_at INTEGER NOT NULL
+        );
+      `)
+    },
+  },
+
+  {
+    version: 8,
+    name: 'devtools-organizer',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS organizer_rules (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          scope_path TEXT NOT NULL,
+          recursive INTEGER NOT NULL DEFAULT 1,
+          conditions_json TEXT NOT NULL DEFAULT '[]',
+          actions_json TEXT NOT NULL DEFAULT '[]',
+          schedule TEXT NOT NULL DEFAULT 'manual',
+          last_run_at INTEGER,
+          files_affected_total INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS organizer_runs (
+          id TEXT PRIMARY KEY,
+          rule_id TEXT,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER,
+          mode TEXT NOT NULL CHECK (mode IN ('dry_run', 'execute')),
+          ops_planned INTEGER NOT NULL DEFAULT 0,
+          ops_executed INTEGER NOT NULL DEFAULT 0,
+          bytes_moved INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'running',
+          error TEXT
+        );
+
+        /* The undo journal. One row per executed op, holding enough to reverse
+           it. The checksum is what makes undo verifiable rather than hopeful —
+           a restored file is compared by hash, not by filename. */
+        CREATE TABLE IF NOT EXISTS organizer_journal (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL,
+          op_type TEXT NOT NULL,
+          source_path TEXT NOT NULL,
+          dest_path TEXT,
+          executed_at INTEGER NOT NULL,
+          reversed_at INTEGER,
+          checksum TEXT,
+          FOREIGN KEY (run_id) REFERENCES organizer_runs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_org_journal_run ON organizer_journal(run_id);
+
+        /* Named organizer_file_index, not file_index: a files_index table
+           already exists for the read-only Files tab and the two are
+           unrelated. One character of difference between two table names is a
+           bug waiting to happen. */
+        CREATE TABLE IF NOT EXISTS organizer_file_index (
+          path TEXT PRIMARY KEY,
+          size INTEGER NOT NULL DEFAULT 0,
+          mtime INTEGER NOT NULL DEFAULT 0,
+          hash TEXT,
+          phash TEXT,
+          mime_family TEXT,
+          indexed_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_org_files_size ON organizer_file_index(size);
+        CREATE INDEX IF NOT EXISTS idx_org_files_hash ON organizer_file_index(hash);
+      `)
+    },
+  },
+
+  {
+    version: 9,
+    name: 'devtools-shell',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS shell_history (
+          id TEXT PRIMARY KEY,
+          session_id TEXT,
+          command TEXT NOT NULL,
+          cwd TEXT NOT NULL,
+          classification TEXT NOT NULL
+            CHECK (classification IN ('allow', 'approval', 'block')),
+          approved_by TEXT,
+          exit_code INTEGER,
+          duration_ms INTEGER,
+          output_excerpt TEXT,
+          ran_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_shell_hist_time ON shell_history(ran_at DESC);
+
+        /* User-editable overrides layered on top of the built-in lists. */
+        CREATE TABLE IF NOT EXISTS shell_rules (
+          id TEXT PRIMARY KEY,
+          pattern TEXT NOT NULL,
+          tier TEXT NOT NULL CHECK (tier IN ('allow', 'approval', 'block')),
+          is_regex INTEGER NOT NULL DEFAULT 0,
+          note TEXT,
+          created_at INTEGER NOT NULL
+        );
+      `)
+    },
+  },
+
+  {
+    version: 10,
+    name: 'devtools-vault',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS snippets (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          language TEXT,
+          body TEXT NOT NULL DEFAULT '',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          is_secret INTEGER NOT NULL DEFAULT 0,
+          use_count INTEGER NOT NULL DEFAULT 0,
+          last_used_at INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          source_project_id TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS snippet_versions (
+          id TEXT PRIMARY KEY,
+          snippet_id TEXT NOT NULL,
+          body TEXT NOT NULL,
+          saved_at INTEGER NOT NULL,
+          FOREIGN KEY (snippet_id) REFERENCES snippets(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_snippet_versions ON snippet_versions(snippet_id, saved_at DESC);
+
+        CREATE TABLE IF NOT EXISTS config_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          fields_json TEXT NOT NULL DEFAULT '[]',
+          body TEXT NOT NULL DEFAULT '',
+          is_secret INTEGER NOT NULL DEFAULT 0,
+          builtin INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+
+        /* Metadata only. Secret bodies are deliberately absent from the index:
+           an FTS table stores its input verbatim, so indexing a secret body
+           would write the plaintext back to disk in a second place, undoing
+           the encryption it is stored with. */
+        CREATE VIRTUAL TABLE IF NOT EXISTS snippets_fts USING fts5(
+          title, description, tags, body, tokenize='unicode61'
+        );
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */
