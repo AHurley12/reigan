@@ -7,8 +7,10 @@ import { CalendarPanel } from '../Calendar/CalendarPanel'
 import { MailPanel } from '../Mail/MailPanel'
 import { FilesPanel } from '../Files/FilesPanel'
 import { PerformancePanel } from '../Performance/PerformancePanel'
+import { AutomationsPanel } from '../Automations/AutomationsPanel'
 import { OrbColumn } from '../Orb/OrbColumn'
 import { ToastStack } from '../shared/Toast'
+import { ApprovalDialog } from '../Approvals/ApprovalDialog'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
@@ -70,6 +72,8 @@ export function AppShell() {
         return <FilesPanel />
       case 'performance':
         return <PerformancePanel />
+      case 'automations':
+        return <AutomationsPanel />
       default:
         return <PlaceholderModule module={activeModule} />
     }
@@ -95,6 +99,9 @@ export function AppShell() {
         {showOrbColumn && <OrbColumn />}
       </div>
       <ToastStack />
+      {/* Global: a write-tier action can be requested from any tab, or by a
+          scheduled job while another tab is open. */}
+      <ApprovalDialog />
     </div>
   )
 }

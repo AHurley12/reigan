@@ -14,12 +14,13 @@ import { registerPerformanceHandlers } from './ipc/performance'
 import { registerAgentHandlers } from './ipc/agent'
 import { registerVoiceAuthHandlers } from './ipc/voiceAuth'
 import { stopMonitoring } from './perf/perfMonitor'
-import { runFullIndex } from './files/fileIndexer'
 import { getDatabase, closeDatabase } from './db/database'
 import { getDecodedSetting } from './db/queries'
 import { migrateSecretsToSafeStorage } from './db/secrets'
 import { registerCapabilityHandlers } from './capabilities/ipc'
 import { registerAllCapabilities } from './capabilities/register'
+import { initJobEngine } from './jobs'
+import { stopScheduler } from './jobs/scheduler'
 import {
   UI_SCALE,
   BASE_WINDOW_WIDTH,
@@ -156,12 +157,17 @@ if (!gotSingleInstanceLock) {
     registerAllCapabilities()
     registerCapabilityHandlers(mainWindow)
 
+    // Durable job engine. Started after the capability registry, since every job
+    // dispatches through it. Boot catch-up runs here — see jobs/scheduler.ts.
+    initJobEngine(mainWindow)
+
     // Registered last: initialise() locks the session, so anything above that
     // wants to run at startup does so before the gate closes.
     registerVoiceAuthHandlers(mainWindow)
 
-    // Background file index build — non-blocking, renderer polls FILES_INDEX_STATUS.
-    runFullIndex().catch(() => {})
+    // The file index is now the "Rebuild file index" job (seeded in jobs/seed.ts)
+    // rather than an untracked boot-time side effect, so its runs, failures and
+    // timings show up in the Jobs view like everything else.
 
     // Window control IPC
     ipcMain.on('window:minimize', () => mainWindow.minimize())
@@ -181,6 +187,9 @@ if (!gotSingleInstanceLock) {
 
 app.on('window-all-closed', () => {
   stopMonitoring()
+  // Before closeDatabase(): stopping aborts in-flight runs, and their handlers
+  // write a final job_runs row on the way out.
+  stopScheduler()
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })

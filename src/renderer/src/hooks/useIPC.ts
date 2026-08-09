@@ -62,6 +62,40 @@ declare global {
       // Contract lives in shared/ so preload and renderer share one definition
       // without the renderer importing across the process boundary.
       auth: import('../../../shared/auth-types').VoiceAuthBridge
+      // Generic capability surface — no per-feature bridge method. Anything
+      // registered in main/capabilities is reachable through invoke().
+      capabilities: {
+        invoke: <T = unknown>(
+          id: string,
+          args?: unknown,
+          invocationId?: string
+        ) => Promise<import('../../../shared/types').CapabilityInvokeResult<T>>
+        cancel: (invocationId: string) => Promise<boolean>
+        list: () => Promise<
+          Array<{
+            id: string
+            title: string
+            description: string
+            risk: import('../../../shared/types').RiskTier
+            uiOnly: boolean
+            uiOnlyReason?: string
+            requiresApproval: boolean
+            requiresGoogle: boolean
+          }>
+        >
+        onProgress: (
+          callback: (data: { invocationId: string; done: number; total: number; label?: string }) => void
+        ) => () => void
+      }
+      approvals: {
+        pending: () => Promise<import('../../../shared/types').PendingApproval[]>
+        history: (limit?: number) => Promise<import('../../../shared/types').PendingApproval[]>
+        resolve: (id: string, approved: boolean) => void
+        onRequest: (
+          callback: (request: import('../../../shared/types').PendingApproval) => void
+        ) => () => void
+        onPendingChanged: (callback: () => void) => () => void
+      }
       minimize: () => void
       maximize: () => void
       close: () => void

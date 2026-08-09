@@ -187,6 +187,64 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 4,
+    name: 'job-engine',
+    // The durable scheduler. `next_run_at` lives here rather than in a timer
+    // because REIGAN is a desktop app: it is closed at night and asleep during
+    // meetings, and an in-memory setInterval silently skips everything that fell
+    // due while the process was not running.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS jobs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          capability_id TEXT NOT NULL,
+          args_json TEXT NOT NULL DEFAULT '{}',
+          schedule_kind TEXT NOT NULL
+            CHECK (schedule_kind IN ('interval', 'cron', 'daily_at', 'weekly_on', 'manual')),
+          schedule_expr TEXT NOT NULL DEFAULT '',
+          next_run_at INTEGER,
+          last_run_at INTEGER,
+          last_status TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          catch_up_policy TEXT NOT NULL DEFAULT 'run_once'
+            CHECK (catch_up_policy IN ('run_once', 'run_all', 'skip')),
+          max_retries INTEGER NOT NULL DEFAULT 3,
+          timeout_ms INTEGER NOT NULL DEFAULT 300000,
+          consecutive_failures INTEGER NOT NULL DEFAULT 0,
+          disabled_reason TEXT,
+          system INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+
+        -- The scheduler's hot query is "what is due?", run on every tick.
+        CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(enabled, next_run_at);
+
+        CREATE TABLE IF NOT EXISTS job_runs (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER,
+          status TEXT NOT NULL
+            CHECK (status IN ('running', 'success', 'failure', 'skipped', 'deferred',
+                              'awaiting_approval', 'cancelled', 'timeout')),
+          result_json TEXT,
+          error TEXT,
+          attempt INTEGER NOT NULL DEFAULT 1,
+          triggered_by TEXT NOT NULL DEFAULT 'schedule'
+            CHECK (triggered_by IN ('schedule', 'manual', 'catch_up', 'retry', 'approval')),
+          scheduled_for INTEGER,
+          approval_id TEXT,
+          FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_job_runs_job ON job_runs(job_id, started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_job_runs_started ON job_runs(started_at);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

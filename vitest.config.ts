@@ -12,6 +12,11 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // Pinned so the scheduler's DST tests are deterministic rather than passing
+    // or failing according to where the machine running them happens to be.
+    // America/New_York observes DST with well-known 2026 transitions:
+    // 8 March (spring forward, 02:00 → 03:00) and 1 November (fall back).
+    env: { TZ: 'America/New_York' },
   },
   resolve: {
     alias: [

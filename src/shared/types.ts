@@ -287,3 +287,81 @@ export const IPC = {
   PERF_STOP: 'perf:stop',
   PERF_SAMPLE: 'perf:sample',
 } as const;
+
+// ── Automations: jobs & approvals ──
+// Shared so the renderer types the capability payloads without importing across
+// the process boundary. Mirrors main/jobs/store.ts and main/capabilities/types.ts.
+
+export type ScheduleKind = 'interval' | 'cron' | 'daily_at' | 'weekly_on' | 'manual';
+export type CatchUpPolicy = 'run_once' | 'run_all' | 'skip';
+export type RiskTier = 'read' | 'network' | 'write' | 'destructive';
+
+export type JobRunStatus =
+  | 'running' | 'success' | 'failure' | 'skipped'
+  | 'deferred' | 'awaiting_approval' | 'cancelled' | 'timeout';
+
+export type JobTriggeredBy = 'schedule' | 'manual' | 'catch_up' | 'retry' | 'approval';
+
+export interface ScheduledJob {
+  id: string;
+  name: string;
+  capabilityId: string;
+  args: unknown;
+  scheduleKind: ScheduleKind;
+  scheduleExpr: string;
+  /** Human-readable, e.g. "Daily at 04:00" — the table never shows raw cron. */
+  scheduleDescription: string;
+  nextRunAt: number | null;
+  nextRunRelative: string | null;
+  lastRunAt: number | null;
+  lastStatus: JobRunStatus | null;
+  enabled: boolean;
+  catchUpPolicy: CatchUpPolicy;
+  maxRetries: number;
+  timeoutMs: number;
+  consecutiveFailures: number;
+  disabledReason: string | null;
+  system: boolean;
+  running: boolean;
+  createdAt: number;
+}
+
+export interface JobRunRecord {
+  id: string;
+  jobId: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: JobRunStatus;
+  result: unknown;
+  error: string | null;
+  attempt: number;
+  triggeredBy: JobTriggeredBy;
+  scheduledFor: number | null;
+  approvalId: string | null;
+}
+
+export interface ApprovalDiff {
+  subject: string;
+  changes: Array<{ field: string; before: string | null; after: string | null }>;
+}
+
+export interface PendingApproval {
+  id: string;
+  capabilityId: string;
+  /** Present on a live request; absent on rows read back from the store. */
+  title?: string;
+  risk: RiskTier;
+  summary: string;
+  detail?: string;
+  diff: ApprovalDiff | null;
+  requestedBy: 'ui' | 'agent' | 'job';
+  requestedAt: number;
+}
+
+export interface CapabilityInvokeResult<T = unknown> {
+  ok: boolean;
+  result?: T;
+  error?: string;
+  errorCode?: string;
+  awaitingApprovalId?: string;
+}
