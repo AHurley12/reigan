@@ -3,6 +3,7 @@ import { taskCapabilities } from './defs/tasks'
 import { jobCapabilities } from './defs/jobs'
 import { fileCapabilities } from './defs/files'
 import { devtoolsCapabilities } from './defs/devtools'
+import { localhostCapabilities } from './defs/localhost'
 
 /**
  * The one place every capability module is pulled in.
@@ -15,6 +16,7 @@ export function registerAllCapabilities(): void {
   registerCapabilities(taskCapabilities)
   registerCapabilities(fileCapabilities)
   registerCapabilities(devtoolsCapabilities)
+  registerCapabilities(localhostCapabilities)
   // Registered after everything schedulable: jobs.upsert validates that its
   // target capability exists, so the targets must be present first.
   registerCapabilities(jobCapabilities)
