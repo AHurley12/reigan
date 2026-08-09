@@ -38,7 +38,7 @@ export interface ApprovalRequest {
   risk: RiskTier
   summary: string
   detail?: string
-  diff?: CapabilityDiff | null
+  diff: CapabilityDiff | null
   requestedBy: InvocationSource
   requestedAt: number
 }

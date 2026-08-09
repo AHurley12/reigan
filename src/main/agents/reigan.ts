@@ -4,13 +4,13 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { REIGAN_SYSTEM_PROMPT, REIGAN_UNBRIDLED_SYSTEM_PROMPT } from './prompts'
-import { createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool } from './tools/taskTools'
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
 import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTools'
 import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
 import { getPerformanceSnapshotTool } from './tools/performanceTools'
+import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
 import type { PersonalityMode } from '../../shared/types'
@@ -28,7 +28,13 @@ function getPersonalityMode(): PersonalityMode {
 
 function getTools(): DynamicStructuredTool[] {
   const tools: DynamicStructuredTool[] = [
-    createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool,
+    // Generated from the capability registry — the tools declared in
+    // main/capabilities/defs. `uiOnly` capabilities are excluded here by
+    // construction, which is what keeps them out of the model's context.
+    ...buildAgentTools(),
+
+    // Legacy hand-written tools, not yet migrated to the registry. New tools
+    // must be added as capabilities, not here.
     getTimeTool, getSystemInfoTool, openAppTool,
     searchFilesTool, listDirectoryTool, readFileTool,
     getSettingsTool, updateSettingTool,
@@ -36,6 +42,7 @@ function getTools(): DynamicStructuredTool[] {
   ]
 
   // Only exposed once the user has connected a Google account (Settings).
+  // Registry capabilities handle this themselves via `requiresGoogle`.
   const googleClient = googleAuth.getClient()
   if (googleClient) {
     tools.push(...createCalendarTools(googleClient), ...createEmailTools(googleClient))

@@ -139,6 +139,48 @@ const api = {
   // Voice authentication (lock screen). See preload/authBridge.ts.
   auth: authBridge,
 
+  // Capability registry — the generic surface for everything declared in
+  // main/capabilities. Deliberately *not* one bridge method per operation: a
+  // capability is reachable the moment it is registered, with no preload edit.
+  capabilities: {
+    invoke: <T = unknown>(id: string, args?: unknown, invocationId?: string) =>
+      ipcRenderer.invoke('capability:invoke', { id, args, invocationId }) as Promise<{
+        ok: boolean
+        result?: T
+        error?: string
+        errorCode?: string
+        awaitingApprovalId?: string
+      }>,
+    cancel: (invocationId: string) => ipcRenderer.invoke('capability:cancel', invocationId),
+    list: () => ipcRenderer.invoke('capability:list'),
+    onProgress: (
+      callback: (data: { invocationId: string; done: number; total: number; label?: string }) => void
+    ) => {
+      const handler = (_: unknown, data: { invocationId: string; done: number; total: number; label?: string }) =>
+        callback(data)
+      ipcRenderer.on('capability:progress', handler)
+      return () => ipcRenderer.removeListener('capability:progress', handler)
+    },
+  },
+
+  // Approvals — write-tier actions awaiting the user's decision.
+  approvals: {
+    pending: () => ipcRenderer.invoke('approvals:pending'),
+    history: (limit?: number) => ipcRenderer.invoke('approvals:history', limit),
+    resolve: (id: string, approved: boolean) =>
+      ipcRenderer.send('approval:resolve', { id, approved }),
+    onRequest: (callback: (request: unknown) => void) => {
+      const handler = (_: unknown, request: unknown) => callback(request)
+      ipcRenderer.on('approval:request', handler)
+      return () => ipcRenderer.removeListener('approval:request', handler)
+    },
+    onPendingChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('approval:pending-changed', handler)
+      return () => ipcRenderer.removeListener('approval:pending-changed', handler)
+    },
+  },
+
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

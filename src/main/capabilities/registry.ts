@@ -4,6 +4,7 @@ import {
   type AnyCapability,
   type CapabilityContext,
   type CapabilityDef,
+  type CapabilityDiff,
   type CapabilityInfo,
 } from './types'
 
@@ -138,7 +139,7 @@ export async function invokeCapability(
   const needsApproval = cap.risk === 'write' || cap.risk === 'destructive'
   if (needsApproval && ctx.invokedBy !== 'ui') {
     const spec = cap.approval!
-    let diff = null
+    let diff: CapabilityDiff | null = null
     try {
       diff = (await spec.diff?.(args)) ?? null
     } catch {

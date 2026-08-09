@@ -1,4 +1,5 @@
 import { getDatabase } from './database'
+import { decryptSecret, encryptSecret, isSecretKey } from './secrets'
 import { Task, TaskStatus, TaskPriority } from '../../shared/types'
 import { randomUUID } from 'crypto'
 
@@ -138,7 +139,11 @@ export function getMessages(conversationId: string): Array<{ id: string; role: s
 export function getSetting(key: string): string | null {
   const db = getDatabase()
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any
-  return row ? row.value : null
+  if (!row) return null
+  // Credential rows are encrypted at rest (see db/secrets.ts). Decryption is
+  // transparent here so every existing caller keeps working unchanged, and rows
+  // written by builds that predate encryption pass through untouched.
+  return isSecretKey(key) ? decryptSecret(row.value) : row.value
 }
 
 // Renderer settings are JSON-encoded before being sent over IPC (settingsStore.ts)
@@ -159,11 +164,14 @@ export function getDecodedSetting(key: string): string | null {
 
 export function setSetting(key: string, value: string): void {
   const db = getDatabase()
-  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
+  const stored = isSecretKey(key) ? encryptSecret(value) : value
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, stored)
 }
 
 export function getAllSettings(): Record<string, string> {
   const db = getDatabase()
   const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
-  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+  return Object.fromEntries(
+    rows.map((r) => [r.key, isSecretKey(r.key) ? decryptSecret(r.value) : r.value])
+  )
 }

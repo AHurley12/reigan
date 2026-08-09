@@ -17,6 +17,9 @@ import { stopMonitoring } from './perf/perfMonitor'
 import { runFullIndex } from './files/fileIndexer'
 import { getDatabase, closeDatabase } from './db/database'
 import { getDecodedSetting } from './db/queries'
+import { migrateSecretsToSafeStorage } from './db/secrets'
+import { registerCapabilityHandlers } from './capabilities/ipc'
+import { registerAllCapabilities } from './capabilities/register'
 import {
   UI_SCALE,
   BASE_WINDOW_WIDTH,
@@ -122,8 +125,13 @@ if (!gotSingleInstanceLock) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    // Initialize DB
-    getDatabase()
+    // Initialize DB (runs pending schema migrations — see db/migrations.ts)
+    const db = getDatabase()
+
+    // Encrypt any credential rows left in plaintext by an earlier build. Must
+    // come after whenReady(): safeStorage has no OS keyring before that point.
+    const encrypted = migrateSecretsToSafeStorage(db)
+    if (encrypted > 0) console.log(`[secrets] encrypted ${encrypted} plaintext credential row(s)`)
 
     // Synchronous (better-sqlite3) so the window's initial theme is known
     // before creation — see THEME_BACKGROUNDS and preload/index.ts.
@@ -142,6 +150,12 @@ if (!gotSingleInstanceLock) {
     registerFileHandlers()
     registerPerformanceHandlers(mainWindow)
     registerAgentHandlers(mainWindow)
+
+    // Capability registry: declares every capability, then exposes the single
+    // generic IPC surface the renderer and the agent both dispatch through.
+    registerAllCapabilities()
+    registerCapabilityHandlers(mainWindow)
+
     // Registered last: initialise() locks the session, so anything above that
     // wants to run at startup does so before the gate closes.
     registerVoiceAuthHandlers(mainWindow)
