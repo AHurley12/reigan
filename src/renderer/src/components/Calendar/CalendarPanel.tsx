@@ -118,12 +118,12 @@ export function CalendarPanel() {
 
   return (
     <div className="relative flex flex-col h-full" onClick={() => setSelected(null)}>
-      <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="rule-b flex items-center justify-between px-6 py-4 shrink-0">
         <SectionHeader en="Calendar" ja="カレンダー" romaji="karendaa" />
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); setWeekStart((w) => addDays(w, -7)) }}
-            className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/5 transition-colors"
+            className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-tint/5 transition-colors"
             style={{ color: 'var(--text-muted)' }}
             aria-label="Previous week"
           >
@@ -134,7 +134,7 @@ export function CalendarPanel() {
           </span>
           <button
             onClick={(e) => { e.stopPropagation(); setWeekStart((w) => addDays(w, 7)) }}
-            className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-white/5 transition-colors"
+            className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-tint/5 transition-colors"
             style={{ color: 'var(--text-muted)' }}
             aria-label="Next week"
           >
@@ -159,13 +159,13 @@ export function CalendarPanel() {
               const isToday = isSameDay(d, now)
               return (
                 <div key={i} className="text-center pb-2">
-                  <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
                     {d.toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
                   <div
                     className="text-sm font-medium mt-0.5 inline-flex items-center justify-center w-6 h-6 rounded-full"
                     style={{
-                      color: isToday ? 'white' : 'var(--text-primary)',
+                      color: isToday ? 'var(--text-on-accent)' : 'var(--text-primary)',
                       background: isToday ? 'var(--reigan-gradient)' : 'transparent',
                     }}
                   >
@@ -186,8 +186,12 @@ export function CalendarPanel() {
                     <div
                       key={ev.id}
                       onClick={(e) => { e.stopPropagation(); setSelected(ev) }}
-                      className="text-[10px] rounded px-1.5 py-0.5 truncate cursor-pointer"
-                      style={{ background: `${eventColor(ev.title)}33`, color: 'var(--text-primary)' }}
+                      className="text-[11px] rounded px-1.5 py-0.5 truncate cursor-pointer"
+                      // color-mix, not `${color}33`: eventColor returns a
+                      // var() reference, and appending hex alpha to that
+                      // produced `var(--reigan-primary)33` — invalid CSS that
+                      // silently dropped the background entirely.
+                      style={{ background: `color-mix(in srgb, ${eventColor(ev.title)} 20%, transparent)`, color: 'var(--text-primary)' }}
                     >
                       {ev.title}
                     </div>
@@ -201,7 +205,7 @@ export function CalendarPanel() {
           <div className="grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)' }}>
             <div style={{ height: GRID_HEIGHT }}>
               {Array.from({ length: HOUR_END - HOUR_START }, (_, i) => (
-                <div key={i} className="text-[10px] pr-2 text-right -translate-y-2" style={{ height: ROW_HEIGHT, color: 'var(--text-muted)' }}>
+                <div key={i} className="text-[11px] pr-2 text-right -translate-y-2" style={{ height: ROW_HEIGHT, color: 'var(--text-muted)' }}>
                   {(() => {
                     const h = HOUR_START + i
                     const period = h < 12 ? 'AM' : 'PM'
@@ -215,19 +219,19 @@ export function CalendarPanel() {
             {eventsByDay.map((d, dayIndex) => (
               <div
                 key={dayIndex}
-                className="relative"
-                style={{ height: GRID_HEIGHT, borderLeft: '1px solid var(--border)' }}
+                className="rule-l relative"
+                style={{ height: GRID_HEIGHT }}
               >
                 {Array.from({ length: HOUR_END - HOUR_START }, (_, i) => (
-                  <div key={i} style={{ height: ROW_HEIGHT, borderTop: '1px solid var(--border)' }} />
+                  <div key={i} className="rule" style={{ height: ROW_HEIGHT }} />
                 ))}
 
                 {d.timed.map((ev) => (
                   <div
                     key={ev.id}
                     onClick={(e) => { e.stopPropagation(); setSelected(ev) }}
-                    className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-pointer text-[10px] leading-tight transition-opacity hover:opacity-90"
-                    style={{ top: ev.top, height: ev.height, background: eventColor(ev.title), color: 'white' }}
+                    className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-pointer text-[11px] leading-tight transition-opacity hover:opacity-90"
+                    style={{ top: ev.top, height: ev.height, background: eventColor(ev.title), color: 'var(--text-on-accent)' }}
                   >
                     <div className="font-medium truncate">{ev.title}</div>
                     <div className="opacity-80 truncate">
@@ -272,7 +276,7 @@ export function CalendarPanel() {
       )}
 
       {loading && (
-        <div className="absolute top-4 right-6 text-[10px]" style={{ color: 'var(--text-muted)' }}>Loading…</div>
+        <div className="absolute top-4 right-6 text-[11px]" style={{ color: 'var(--text-muted)' }}>Loading…</div>
       )}
     </div>
   )

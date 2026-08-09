@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { createTask, listTasks, updateTask, deleteTask } from '../../db/queries'
+import { withPermission } from './permission'
 
 export const createTaskTool = new DynamicStructuredTool({
   name: 'create_task',
@@ -12,10 +13,11 @@ export const createTaskTool = new DynamicStructuredTool({
     status: z.enum(['backlog', 'active', 'review', 'done']).optional().describe('Initial task status'),
     dueDate: z.number().optional().describe('Due date as Unix timestamp in milliseconds'),
   }),
-  func: async (input) => {
-    const task = createTask(input)
-    return `Task created: "${task.title}" (${task.priority} priority, status: ${task.status}, id: ${task.id})`
-  },
+  func: async (input) =>
+    withPermission('create_task', `Create task "${input.title}"`, () => {
+      const task = createTask(input)
+      return `Task created: "${task.title}" (${task.priority} priority, status: ${task.status}, id: ${task.id})`
+    }),
 })
 
 export const listTasksTool = new DynamicStructuredTool({
@@ -46,11 +48,17 @@ export const updateTaskTool = new DynamicStructuredTool({
     dueDate: z.number().optional(),
     description: z.string().optional(),
   }),
-  func: async ({ id, ...updates }) => {
-    const task = updateTask(id, updates)
-    if (!task) return `Task ${id} not found.`
-    return `Updated task: "${task.title}" — status: ${task.status}, priority: ${task.priority}`
-  },
+  func: async ({ id, ...updates }) =>
+    withPermission(
+      'update_task',
+      `Update task ${id}${updates.title ? ` — "${updates.title}"` : ''}`,
+      () => {
+        const task = updateTask(id, updates)
+        if (!task) return `Task ${id} not found.`
+        return `Updated task: "${task.title}" — status: ${task.status}, priority: ${task.priority}`
+      },
+      Object.entries(updates).map(([k, v]) => `${k}: ${v}`).join(', ') || undefined
+    ),
 })
 
 export const completeTaskTool = new DynamicStructuredTool({
@@ -59,9 +67,23 @@ export const completeTaskTool = new DynamicStructuredTool({
   schema: z.object({
     id: z.string().describe('The task id to complete'),
   }),
-  func: async ({ id }) => {
-    const task = updateTask(id, { status: 'done', completedAt: Date.now() })
-    if (!task) return `Task ${id} not found.`
-    return `Completed: "${task.title}" — 完了 (kanryou)`
-  },
+  func: async ({ id }) =>
+    withPermission('complete_task', `Mark task ${id} as done`, () => {
+      const task = updateTask(id, { status: 'done', completedAt: Date.now() })
+      if (!task) return `Task ${id} not found.`
+      return `Completed: "${task.title}" — 完了 (kanryou)`
+    }),
+})
+
+export const deleteTaskTool = new DynamicStructuredTool({
+  name: 'delete_task',
+  description: 'Permanently delete a task by id. Use when the user asks to remove or delete a task.',
+  schema: z.object({
+    id: z.string().describe('The task id to delete'),
+  }),
+  func: async ({ id }) =>
+    withPermission('delete_task', `Permanently delete task ${id}`, () => {
+      deleteTask(id)
+      return `Deleted task ${id}.`
+    }),
 })

@@ -1,0 +1,246 @@
+/*
+ * Frutiger Aero material system.
+ *
+ * Five materials, each bound to a *structural* selector the app already uses
+ * (.panel-surface, .rule, button, …) rather than to any component by name. No
+ * component knows this skin exists; everything here is scoped to
+ * html[data-theme='aero'] and inert otherwise.
+ *
+ * Every colour comes from a token. The literals below are geometry (offsets,
+ * stops, sizes) and gradient *structure* — the things that make the material
+ * what it is rather than what colour it is.
+ *
+ * Perf note: nothing in this file animates. Motion lives in Effects.tsx, on
+ * transform and opacity only. backdrop-filter appears on exactly three
+ * selectors — panels, the settings drawer, and the dropdown — which is the
+ * budget of four large blurred surfaces. Small repeated elements (buttons,
+ * chips, list rows) fake glass with a pre-baked gradient.
+ */
+
+html[data-theme='aero'] {
+  --aero-sky-top: #bfe9ff;
+  --aero-sky-mid: #7fd4f5;
+  --aero-aqua: #16a8d8;
+  --aero-aqua-deep: #0b6e96;
+  --aero-abyss: #063e56;
+  --aero-lime: #8fd400;
+  --aero-lime-bright: #c3f53c;
+  --aero-chrome-light: #f4fbff;
+  --aero-chrome-mid: #c9dde8;
+  --aero-chrome-shadow: #7a96a6;
+
+  /* The ground. Consumed by Effects.tsx, declared here so the gradient stops
+     are next to the palette they are made of. */
+  /* Stops are weighted toward the light end on purpose. The abyss is the
+     aesthetic payoff but it is also where dark teal text would stop being
+     legible, so it is compressed into the last sliver — below the content
+     area, where the flora silhouette sits. */
+  --aero-depth-water: linear-gradient(
+    to bottom,
+    var(--aero-sky-top) 0%,
+    var(--aero-sky-mid) 30%,
+    var(--aero-aqua) 64%,
+    var(--aero-aqua-deep) 87%,
+    var(--aero-abyss) 100%
+  );
+
+  /* Etched glass: a 1px white shadow *below* each glyph, so type looks cut
+     into the surface rather than laid on it. This is not decoration — it is
+     what keeps dark text legible over a translucent bright ground. */
+  --aero-etch: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ── 1. Glass panel ───────────────────────────────────────────────────────
+   The base for panels, cards, modals and the settings surface: a white veil
+   with a real blur, a wet highlight along the top edge and a water-shadow
+   under it. Bound to the two structural classes every panel already carries. */
+html[data-theme='aero'] .panel-surface,
+html[data-theme='aero'] main.ornate,
+html[data-theme='aero'] .glass-panel {
+  background-image: linear-gradient(
+    var(--sheen-angle),
+    var(--surface-gloss-top) 0%,
+    var(--surface-gloss-bottom) 100%
+  );
+  backdrop-filter: blur(var(--surface-glass-blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--surface-glass-blur)) saturate(1.25);
+  box-shadow: var(--bevel-inner), var(--bevel-outer);
+  border-color: var(--edge-highlight);
+}
+
+/* The chat ground sits *inside* main.ornate, which is already glass. Stacking
+   a second veil on it was what turned the whole window into flat haze and hid
+   the water entirely — so this one is barely there, just enough to lift text
+   off the scene. */
+html[data-theme='aero'] .chat-surface {
+  background-image: linear-gradient(
+    var(--sheen-angle),
+    rgba(255, 255, 255, 0.10) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+
+/* ── 2. Gloss button ──────────────────────────────────────────────────────
+   Vertical gradient light→saturated with a hard specular band across the
+   upper 45%. The band is a *hard* colour stop, not a fade: that abrupt
+   terminator is the single detail that reads as 2007 rather than as a modern
+   soft gradient.
+
+   Scoped away from buttons that are deliberately not chrome — the frameless
+   window controls, the nav rail's icon buttons (which carry their own active
+   stamp), and the theme selector's preview cards. */
+html[data-theme='aero'] button:not(.titlebar-no-drag):not([role='radio']),
+html[data-theme='aero'] .gloss-button {
+  background-image: linear-gradient(
+      var(--sheen-angle),
+      var(--sheen-specular) 0%,
+      var(--sheen-specular) 45%,
+      rgba(255, 255, 255, 0.08) 45.01%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
+  border: 1px solid var(--border-strong);
+  box-shadow: inset 0 1px 0 var(--edge-highlight), 0 1px 2px var(--bevel-cast);
+  text-shadow: var(--aero-etch);
+}
+
+html[data-theme='aero'] button:not(.titlebar-no-drag):not([role='radio']):hover,
+html[data-theme='aero'] .gloss-button:hover {
+  background-image: linear-gradient(
+    var(--sheen-angle),
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.82) 45%,
+    rgba(255, 255, 255, 0.2) 45.01%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+/* Pressed: the gradient inverts and the whole element drops a pixel, so the
+   specular band ends up underneath the finger. */
+html[data-theme='aero'] button:not(.titlebar-no-drag):not([role='radio']):active,
+html[data-theme='aero'] .gloss-button:active {
+  background-image: linear-gradient(
+    var(--sheen-angle),
+    rgba(11, 110, 150, 0.12) 0%,
+    rgba(11, 110, 150, 0.04) 55%,
+    var(--sheen-specular) 55.01%,
+    var(--sheen-specular) 100%
+  );
+  box-shadow: var(--bevel-pressed);
+  transform: translateY(1px);
+}
+
+html[data-theme='aero'] button:disabled {
+  opacity: var(--state-disabled-opacity);
+  box-shadow: none;
+  transform: none;
+}
+
+/* ── 3. Chrome bezel ──────────────────────────────────────────────────────
+   Brushed metal for the window frame and the nav rail: a four-stop gradient
+   (light → mid → shadow → mid) with hairline borders. */
+html[data-theme='aero'] .titlebar-drag,
+html[data-theme='aero'] .chrome-bezel {
+  background-image: linear-gradient(
+    to bottom,
+    var(--aero-chrome-light) 0%,
+    var(--aero-chrome-mid) 46%,
+    var(--aero-chrome-shadow) 50%,
+    var(--aero-chrome-mid) 54%,
+    var(--aero-chrome-light) 100%
+  );
+  border-bottom-color: var(--edge-shadow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+/* ── 4. Depth water ───────────────────────────────────────────────────────
+   The app ground is painted by the ambient layer behind everything (see
+   tokens.ts on why surface.base is transparent), so there is nothing to do
+   here except make sure the shell does not paint over it. */
+html[data-theme='aero'] .grained {
+  background-image: none;
+}
+
+/* ── 5. Type ──────────────────────────────────────────────────────────────
+   Etched glass on everything sitting over a translucent surface. */
+html[data-theme='aero'] body {
+  text-shadow: var(--aero-etch);
+}
+html[data-theme='aero'] .section-title {
+  letter-spacing: var(--type-tracking-wide);
+  font-weight: var(--type-weight-medium);
+}
+/* Monospace has thin stems and loses to the etch shadow at small sizes —
+   masked API keys in particular. Give it back its contrast. */
+html[data-theme='aero'] .font-mono,
+html[data-theme='aero'] input,
+html[data-theme='aero'] textarea {
+  text-shadow: none;
+}
+
+/* ── Dividers ─────────────────────────────────────────────────────────────
+   Every rule becomes a two-tone score: a water-shadow line with a wet
+   highlight on the lit side, the same trick the panels use. */
+html[data-theme='aero'] .rule {
+  border-top-color: var(--edge-shadow);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
+}
+html[data-theme='aero'] .rule-b {
+  border-bottom-color: var(--edge-shadow);
+  box-shadow: inset 0 -1px 0 var(--edge-highlight);
+}
+html[data-theme='aero'] .rule-l {
+  border-left-color: var(--edge-shadow);
+}
+html[data-theme='aero'] .rule-r {
+  border-right-color: var(--edge-shadow);
+}
+/* .rule-ornate has no theme artwork here: a Victorian lozenge is the wrong
+   century. It falls back to the plain hairline the base class declares, which
+   is exactly what the fallback is for. */
+html[data-theme='aero'] .rule-ornate {
+  border-top-color: var(--edge-shadow);
+  box-shadow: inset 0 1px 0 var(--edge-highlight);
+}
+
+/* ── Inputs ───────────────────────────────────────────────────────────────
+   Recessed rather than lifted: the bevel runs the other way. */
+html[data-theme='aero'] input,
+html[data-theme='aero'] textarea {
+  background-image: linear-gradient(
+    var(--sheen-angle),
+    rgba(11, 110, 150, 0.10) 0%,
+    rgba(255, 255, 255, 0.10) 30%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  box-shadow: inset 0 1px 3px rgba(6, 62, 86, 0.18);
+}
+
+/* ── Text reveal ──────────────────────────────────────────────────────────
+   Named by registry.ts as textReveal.animation. Each character surfaces like
+   something rising through water: it comes up slightly, brightens through a
+   wet highlight, and settles. Transform and opacity only. */
+@keyframes reveal-gloss {
+  0% {
+    opacity: 0;
+    transform: translateY(0.18em) scale(0.96);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-0.02em) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────────────────
+   A glass capsule, not a grey bar. */
+html[data-theme='aero'] ::-webkit-scrollbar-thumb {
+  background-image: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(22, 168, 216, 0.55) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}

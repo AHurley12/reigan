@@ -1,0 +1,176 @@
+/*
+ * Ambient layer for Frutiger Aero.
+ *
+ * Loaded lazily with Effects.tsx, so a user who never selects this skin never
+ * downloads it.
+ *
+ * PERFORMANCE CONTRACT — every rule here is written against it:
+ *
+ *  - Only `transform` and `opacity` animate. No animated filter,
+ *    backdrop-filter, box-shadow, background-position, width/height or
+ *    top/left appears anywhere in this file.
+ *  - `will-change: transform` is set on the animating children only. The root
+ *    does not get it: a will-change on a full-viewport element allocates a
+ *    viewport-sized texture for nothing.
+ *  - Bubbles are a fixed pool. The nodes are created once by React and the
+ *    animation loops on them forever — nothing is created or destroyed per
+ *    bubble.
+ *  - Freezing is `animation-play-state: paused`, not `display: none`. Combined
+ *    with the negative animation-delays each element carries, that leaves the
+ *    scene frozen mid-composition — bubbles spread across the frame — rather
+ *    than collapsed to the start of every animation.
+ */
+
+.aero-ambient {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-image: var(--aero-depth-water);
+  opacity: var(--ambient-layer-opacity);
+  mix-blend-mode: var(--ambient-layer-blend);
+}
+
+/* One compositor layer per animating child, and only those. */
+.aero-caustic,
+.aero-bubble,
+.aero-bloom {
+  position: absolute;
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* ── Caustics: two slow light pools drifting under the surface ───────────── */
+.aero-caustic {
+  border-radius: 50%;
+  background-image: radial-gradient(
+    closest-side,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(191, 233, 255, 0.16) 45%,
+    rgba(191, 233, 255, 0) 100%
+  );
+}
+.aero-caustic--a {
+  left: -14%;
+  top: -18%;
+  width: 78vw;
+  height: 62vh;
+  animation: aero-drift-a 47s ease-in-out infinite;
+}
+.aero-caustic--b {
+  right: -22%;
+  top: 12%;
+  width: 66vw;
+  height: 58vh;
+  animation: aero-drift-b 61s ease-in-out infinite;
+}
+
+@keyframes aero-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(9vw, 7vh, 0);
+  }
+}
+@keyframes aero-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-11vw, 5vh, 0);
+  }
+}
+
+/* ── Lens bloom: one static light source, upper corner, slow breathe ─────── */
+.aero-bloom {
+  right: -8%;
+  top: -20%;
+  width: 60vw;
+  height: 60vh;
+  border-radius: 50%;
+  background-image: radial-gradient(
+    closest-side,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.22) 38%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: aero-breathe 17s ease-in-out infinite;
+}
+@keyframes aero-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Bubbles ──────────────────────────────────────────────────────────────
+   Four fixed drift paths, and NOT one parameterised path.
+
+   The first version carried per-bubble --b-drift / --b-peak custom properties
+   into the keyframes, which looked tidy and was measurably wrong: an animation
+   whose keyframes reference var() cannot run on the compositor, because a
+   custom property can change at any time and the value has to be resolved in
+   style. Profiling showed 1802 style recalculations over ten seconds — one per
+   frame — for what is supposed to be a fire-and-forget compositor animation.
+
+   With literal values the whole set is compositor-driven. Variety comes from
+   picking one of four paths plus per-bubble duration, delay, size and column,
+   and from baking the peak alpha into each bubble's own SVG instead of
+   animating to a variable opacity. */
+.aero-bubble {
+  bottom: -12vh;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes aero-rise-1 {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  9%   { opacity: 1; }
+  25%  { transform: translate3d(6vw, -30vh, 0); }
+  50%  { transform: translate3d(0, -60vh, 0); }
+  75%  { transform: translate3d(-6vw, -90vh, 0); }
+  91%  { opacity: 1; }
+  100% { transform: translate3d(0, -118vh, 0); opacity: 0; }
+}
+@keyframes aero-rise-2 {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  9%   { opacity: 1; }
+  25%  { transform: translate3d(-4vw, -30vh, 0); }
+  50%  { transform: translate3d(1vw, -60vh, 0); }
+  75%  { transform: translate3d(5vw, -90vh, 0); }
+  91%  { opacity: 1; }
+  100% { transform: translate3d(2vw, -118vh, 0); opacity: 0; }
+}
+@keyframes aero-rise-3 {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  9%   { opacity: 1; }
+  25%  { transform: translate3d(2vw, -30vh, 0); }
+  50%  { transform: translate3d(-3vw, -60vh, 0); }
+  75%  { transform: translate3d(2vw, -90vh, 0); }
+  91%  { opacity: 1; }
+  100% { transform: translate3d(-1vw, -118vh, 0); opacity: 0; }
+}
+@keyframes aero-rise-4 {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  9%   { opacity: 1; }
+  25%  { transform: translate3d(-7vw, -30vh, 0); }
+  50%  { transform: translate3d(-2vw, -60vh, 0); }
+  75%  { transform: translate3d(-8vw, -90vh, 0); }
+  91%  { opacity: 1; }
+  100% { transform: translate3d(-4vw, -118vh, 0); opacity: 0; }
+}
+
+/* ── Frozen composition ───────────────────────────────────────────────────
+   Set when the OS or the app's own reduced-motion setting is on, and when the
+   window loses focus. Still, not hidden. */
+.aero-ambient--still,
+.aero-ambient--still * {
+  animation-play-state: paused !important;
+}

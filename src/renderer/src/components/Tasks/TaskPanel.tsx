@@ -46,23 +46,20 @@ export function TaskPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-6 py-4 shrink-0"
-        style={{ borderBottom: '1px solid var(--border)' }}
-      >
+      <div className="rule-b flex items-center justify-between px-6 py-4 shrink-0">
         <SectionHeader en="Tasks" ja="タスク" romaji="tasuku" />
 
         <div className="flex items-center gap-2">
           {/* View toggle */}
           <button
             onClick={() => setViewMode('list')}
-            className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'text-txt-primary bg-white/10' : 'text-txt-muted hover:text-txt-secondary'}`}
+            className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'text-txt-primary bg-tint/10' : 'text-txt-muted hover:text-txt-secondary'}`}
           >
             <LayoutList size={16} />
           </button>
           <button
             onClick={() => setViewMode('kanban')}
-            className={`p-1.5 rounded transition-colors ${viewMode === 'kanban' ? 'text-txt-primary bg-white/10' : 'text-txt-muted hover:text-txt-secondary'}`}
+            className={`p-1.5 rounded transition-colors ${viewMode === 'kanban' ? 'text-txt-primary bg-tint/10' : 'text-txt-muted hover:text-txt-secondary'}`}
           >
             <Columns size={16} />
           </button>
@@ -70,7 +67,7 @@ export function TaskPanel() {
       </div>
 
       {/* Quick create */}
-      <div className="px-6 py-3 flex gap-2 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="px-6 py-3 flex gap-2 shrink-0 rule-b">
         <input
           value={newTaskTitle}
           onChange={(e) => setNewTaskTitle(e.target.value)}
@@ -87,10 +84,10 @@ export function TaskPanel() {
       </div>
 
       {/* Filter tabs */}
-      <div className="px-6 py-2 flex gap-1 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="px-6 py-2 flex gap-1 shrink-0 rule-b">
         <button
           onClick={() => setFilterStatus(null)}
-          className={`px-2 py-1 rounded text-xs transition-colors ${filterStatus === null ? 'bg-white/10 text-txt-primary' : 'text-txt-muted hover:text-txt-secondary'}`}
+          className={`px-2 py-1 rounded text-xs transition-colors ${filterStatus === null ? 'bg-tint/10 text-txt-primary' : 'text-txt-muted hover:text-txt-secondary'}`}
         >
           All
         </button>
@@ -98,7 +95,7 @@ export function TaskPanel() {
           <button
             key={col.id}
             onClick={() => setFilterStatus(col.id as TaskStatus)}
-            className={`px-2 py-1 rounded text-xs transition-colors ${filterStatus === col.id ? 'bg-white/10 text-txt-primary' : 'text-txt-muted hover:text-txt-secondary'}`}
+            className={`px-2 py-1 rounded text-xs transition-colors ${filterStatus === col.id ? 'bg-tint/10 text-txt-primary' : 'text-txt-muted hover:text-txt-secondary'}`}
           >
             {col.en}
           </button>
@@ -126,7 +123,7 @@ export function TaskPanel() {
                       <TaskCard key={task.id} task={task} onComplete={handleComplete} onDelete={handleDelete} />
                     ))}
                     {colTasks.length === 0 && (
-                      <div className="text-center py-6 text-[10px] font-kanji"
+                      <div className="text-center py-6 text-[11px] font-kanji"
                         style={{ color: 'var(--text-kanji)', opacity: 0.4 }}>
                         {col.ja}
                       </div>

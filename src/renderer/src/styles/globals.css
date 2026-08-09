@@ -34,6 +34,64 @@
   --border:        rgba(237, 230, 214, 0.07);
   --border-hover:  rgba(237, 230, 214, 0.14);
   --border-accent: rgba(216, 67, 42, 0.45);
+  /* Static fallback until ThemeProvider's first paint sets the real value — see theme/applyTokens.ts */
+  --border-focus:  #23A18C;
+
+  /* Pre-applyTokens fallbacks. Everything below is overwritten by
+     theme/applyTokens.ts before first paint; these values exist so the
+     document is never styled against undefined custom properties — which
+     matters more than it used to, because Tailwind's colours now resolve
+     through the --rgb-* channel triplets and an undefined one makes the whole
+     rgb() declaration invalid rather than merely wrong. Values are Shingan's,
+     matching the static palette above. */
+  --rgb-surface-base: 11 10 8;
+  --rgb-surface-raised: 22 20 15;
+  --rgb-surface-overlay: 30 27 21;
+  --rgb-surface-sunken: 39 35 25;
+  --rgb-accent-primary: 216 67 42;
+  --rgb-accent-secondary: 35 161 140;
+  --rgb-accent-danger: 229 72 77;
+  --rgb-text-primary: 237 230 214;
+  --rgb-text-secondary: 181 171 152;
+  --rgb-text-muted: 107 100 85;
+  --rgb-text-kanji: 138 128 101;
+  --rgb-text-accent: 224 165 74;
+  --rgb-text-on-accent: 255 255 255;
+  --rgb-text-on-glass: 237 230 214;
+  --rgb-state-tint: 255 255 255;
+
+  --text-kanji:  #8A8065;
+  --text-accent: #E0A54A;
+  --text-on-accent: #FFFFFF;
+  --text-on-glass: #EDE6D6;
+
+  --status-idle:       #6B6455;
+  --status-listening:  #23A18C;
+  --status-processing: #D8432A;
+  --status-speaking:   #E0A54A;
+  --status-error:      #E5484D;
+  --status-success:    #23A18C;
+
+  /* Material properties. Inert for the two dark skins; Frutiger Aero is the
+     first skin that has any use for them. */
+  --surface-gloss-top: transparent;
+  --surface-gloss-bottom: transparent;
+  --surface-glass-tint: rgba(0, 0, 0, 0);
+  --surface-glass-blur: 0px;
+  --edge-highlight: transparent;
+  --edge-shadow: transparent;
+  --bevel-outer: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --bevel-inner: none;
+  --bevel-pressed: none;
+  --bevel-cast: rgba(0, 0, 0, 0.4);
+  --sheen-angle: 180deg;
+  --sheen-specular: transparent;
+  --ambient-layer-opacity: 1;
+  --ambient-layer-blend: normal;
+  --focus-glow: none;
+  --state-tint: #FFFFFF;
+  --state-selected: rgba(255, 255, 255, 0.10);
+  --state-disabled-opacity: 0.4;
 
   --font-display: 'Rajdhani', 'Zen Kaku Gothic New', sans-serif;
   --font-body:    'Inter', 'Noto Sans JP', sans-serif;
@@ -60,7 +118,9 @@
   --duration-normal: 200ms;
   --duration-slow: 300ms;
 
-  --nav-width: 54px;
+  /* 62, not 54: the rail now carries a moulding (1px) and px-2 of clearance
+     (7px) on each side, which would otherwise have come out of the buttons. */
+  --nav-width: 62px;
   --titlebar-height: 38px;
   --inputbar-height: 64px;
   --orb-size: 120px;
@@ -78,9 +138,120 @@ html, body, #root {
   background: var(--bg-void);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* The rem anchor stays at 14px. Tailwind's spacing scale is rem-based, so
+   every padding, gap and width utility in the app is measured against this
+   number — raising it would inflate all of them ~14% while the fixed-px tokens
+   beside them (--nav-width, --titlebar-height, --space-N) held still, tearing
+   the layout apart. Enlargement belongs to the window zoom factor alone
+   (UI_SCALE), which grows both kinds of value together. Never change this
+   number to size text; size text on the body rule below.
+   (Do not write a "*" followed by a "/" in this file: it ends the comment.) */
+html {
+  font-size: 14px;
+}
+
+/* Inherited body text, one rung up from 14px to match the stepped scales in
+   tailwind.config.ts and each theme's type.scale. Safe to raise: it is not the
+   rem anchor, so it moves text without touching any layout metric. */
+body, #root {
+  font-size: 16px;
+}
+
+/* Grain rides under all content as a background layer (never an overlay), so
+   text stays fully opaque above the texture. See theme/grain.ts. */
+:root {
+  --effect-grain-image: none;
+  --theme-watermark: none;
+  --theme-watermark-size: 480px;
+  --theme-watermark-opacity: 0.06;
+  --theme-frame: none;
+  --theme-frame-focus: none;
+  --theme-frame-slice: 0;
+  --theme-frame-width: 0;
+}
+
+/* Top lining for raised panels. Transparent unless a theme defines it, so a
+   component can compose it into an inline box-shadow without knowing which
+   theme is active (see Shell/SettingsPanel.tsx). */
+:root {
+  --panel-lining: transparent;
+}
+
+/* The app has exactly one divider. Components mark where a division belongs
+   (.rule above, .rule-b below, .rule-l/.rule-r beside) and the theme decides
+   what that line looks like — so a divider can never drift out of step with
+   the rest of the UI the way hand-written `borderTop: 1px solid ...` did.
+   Do not write a divider border by hand. */
+.rule {
+  border-top: 1px solid var(--border);
+}
+.rule-b {
+  border-bottom: 1px solid var(--border);
+}
+.rule-l {
+  border-left: 1px solid var(--border);
+}
+.rule-r {
+  border-right: 1px solid var(--border);
+}
+
+/* A divider that carries a centred ornament rather than running edge to edge.
+   Identical to .rule until a theme fills in the artwork, so this is safe to
+   use anywhere a plain division would also read correctly. `relative` lives
+   here, not in the theme: a theme decorates, it never positions — but the
+   ornament needs a containing block, and that is a structural fact about the
+   class, true whichever theme is active. */
+.rule-ornate {
+  position: relative;
+  border-top: 1px solid var(--border);
+}
+
+/* A container the theme may frame. Falls back to the plain hairline every
+   other box uses: with --theme-frame at `none` the three border-image
+   properties are inert, so a theme that ships no frame costs nothing and
+   needs no opt-out. Use .ornate-focus alongside it on boxes that take
+   focus — panels shouldn't light up because a button inside them was
+   tabbed to. */
+.ornate {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  border-image-source: var(--theme-frame);
+  border-image-slice: var(--theme-frame-slice);
+  border-image-width: var(--theme-frame-width);
+  border-image-repeat: stretch;
+}
+.ornate-focus:focus-within {
+  border-color: var(--border-accent);
+  border-image-source: var(--theme-frame-focus);
+}
+
+.grained {
+  background-image: var(--effect-grain-image);
+  background-repeat: repeat;
+  background-size: 128px 128px;
+}
+
+/* Theme watermark behind the chat surface. Theme-agnostic: the image comes
+   from theme.watermark() via applyThemeVars(), and themes with none set
+   resolve to `none` and paint nothing. */
+.chat-surface {
+  position: relative;
+}
+.chat-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: var(--theme-watermark);
+  background-repeat: no-repeat;
+  background-position: center 48%;
+  background-size: var(--theme-watermark-size) auto;
+  opacity: var(--theme-watermark-opacity);
 }
 
 .titlebar-drag {
@@ -105,8 +276,23 @@ html, body, #root {
 }
 
 :focus-visible {
-  outline: 2px solid var(--reigan-secondary);
+  outline: 2px solid var(--border-focus);
   outline-offset: 2px;
+  /* `none` for the dark skins; a skin that wants a halo declares one. */
+  box-shadow: var(--focus-glow);
+}
+
+/* Text selection was never skinned — it fell through to the UA default, which
+   is a blue nobody chose and which is unreadable on a saturated background. */
+::selection {
+  background: color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  color: var(--text-primary);
+}
+
+/* Theme switch cross-fade — see theme/useTheme.ts setTheme(). Everything else snaps. */
+html[data-theme-transitioning='true'],
+html[data-theme-transitioning='true'] * {
+  transition: background-color 240ms, color 240ms, border-color 240ms !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

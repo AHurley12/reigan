@@ -70,7 +70,7 @@ export function ConnectionsSettings() {
           {status.connected ? 'Disconnect' : 'Sign in with Google'}
         </Button>
       </div>
-      {error && <p className="text-[10px]" style={{ color: 'var(--critical)' }}>{error}</p>}
+      {error && <p className="text-[11px]" style={{ color: 'var(--critical)' }}>{error}</p>}
 
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
         More integrations (future): each gets its own card here — add one entry to the registry, done.

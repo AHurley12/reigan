@@ -8,6 +8,7 @@ const SHORTCUTS = [
   { action: 'Open settings', keys: 'Ctrl+,' },
   { action: 'Switch module', keys: 'Ctrl+1–7' },
   { action: 'Push-to-talk', keys: 'Ctrl+Shift+Space' },
+  { action: 'Toggle personality mode', keys: 'Ctrl+Shift+U' },
   { action: 'Close panel', keys: 'Esc' },
 ]
 

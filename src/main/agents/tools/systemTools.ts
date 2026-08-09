@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { shell } from 'electron'
+import { withPermission } from './permission'
 
 export const getTimeTool = new DynamicStructuredTool({
   name: 'get_time',
@@ -32,17 +33,18 @@ export const openAppTool = new DynamicStructuredTool({
   schema: z.object({
     target: z.string().describe('Application name, file path, or URL to open'),
   }),
-  func: async ({ target }) => {
-    try {
-      if (/^https?:\/\//i.test(target)) {
-        await shell.openExternal(target)
-      } else {
-        const err = await shell.openPath(target)
-        if (err) throw new Error(err)
+  func: async ({ target }) =>
+    withPermission('open_app', `Open "${target}"`, async () => {
+      try {
+        if (/^https?:\/\//i.test(target)) {
+          await shell.openExternal(target)
+        } else {
+          const err = await shell.openPath(target)
+          if (err) throw new Error(err)
+        }
+        return `Opened: ${target}`
+      } catch (err) {
+        return `Could not open "${target}": ${err}`
       }
-      return `Opened: ${target}`
-    } catch (err) {
-      return `Could not open "${target}": ${err}`
-    }
-  },
+    }),
 })

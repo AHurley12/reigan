@@ -1,6 +1,7 @@
 declare global {
   interface Window {
     reigan: {
+      initialThemeId: string
       sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) => Promise<{ conversationId: string }>
       onStream: (callback: (data: { token: string; done: boolean; conversationId: string }) => void) => () => void
       createTask: (params: object) => Promise<any>
@@ -14,10 +15,11 @@ declare global {
       voice: {
         startListening: () => Promise<void>
         stopListening: () => Promise<void>
+        stopSpeaking: () => Promise<void>
         sendAudioChunk: (buffer: ArrayBuffer) => void
         sendAmplitude: (rms: number) => void
         onTranscript: (callback: (data: { text: string; isFinal: boolean }) => void) => () => void
-        onAudioPlayback: (callback: (audioBuffer: ArrayBuffer) => void) => () => void
+        onAudioPlayback: (callback: (audioBuffer: Uint8Array) => void) => () => void
         onStateChange: (callback: (state: string) => void) => () => void
         onOrbAudio: (callback: (data: { amplitude: number; bass: number; mid: number; high: number }) => void) => () => void
         onError: (callback: (message: string) => void) => () => void
@@ -38,6 +40,10 @@ declare global {
         archive: (threadId: string) => Promise<{ archived: boolean }>
         setRead: (threadId: string, read: boolean) => Promise<{ ok: boolean }>
       }
+      avatar: {
+        saveModel: (data: ArrayBuffer) => Promise<{ success: boolean }>
+        loadModel: () => Promise<Uint8Array | null>
+      }
       files: {
         listDir: (dirPath?: string) => Promise<import('../../../shared/types').FileEntry[]>
         search: (params: import('../../../shared/types').FileSearchParams) => Promise<import('../../../shared/types').FileEntry[]>
@@ -47,6 +53,15 @@ declare global {
         open: (filePath: string) => Promise<{ opened: boolean }>
         reveal: (filePath: string) => Promise<{ revealed: boolean }>
       }
+      perf: {
+        staticInfo: () => Promise<import('../../../shared/types').PerfStaticInfo>
+        start: () => Promise<{ started: boolean }>
+        stop: () => Promise<{ stopped: boolean }>
+        onSample: (callback: (sample: import('../../../shared/types').PerfSample) => void) => () => void
+      }
+      // Contract lives in shared/ so preload and renderer share one definition
+      // without the renderer importing across the process boundary.
+      auth: import('../../../shared/auth-types').VoiceAuthBridge
       minimize: () => void
       maximize: () => void
       close: () => void

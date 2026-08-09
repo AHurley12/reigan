@@ -12,7 +12,7 @@ export function HankoMark({ text = '心眼', size = 28, className = '' }: Props)
         width: size,
         height: size,
         background: 'var(--reigan-primary)',
-        boxShadow: '0 0 0 1px rgba(237,230,214,0.15) inset, 0 2px 6px rgba(216,67,42,0.35)',
+        boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 15%, transparent), 0 2px 6px color-mix(in srgb, var(--accent-primary) 35%, transparent)',
       }}
       aria-hidden="true"
     >

@@ -1,0 +1,207 @@
+/*
+ * Sepulchral ornament system.
+ *
+ * One vocabulary, applied consistently to every surface rather than
+ * decorating one corner: a tarnished-silver lining along the top edge of
+ * every raised panel, an engraved rule for every divider, a filigree
+ * bracket at panel corners, and a single memento-mori watermark that lives
+ * behind the chat surface (not the app frame).
+ *
+ * Everything here is scoped to html[data-theme='gothic'] and keyed off
+ * structural classes, so no feature component knows this theme exists.
+ */
+
+html[data-theme='gothic'] {
+  --silver-lining: rgba(198, 195, 186, 0.16);
+  --engraved-shadow: rgba(0, 0, 0, 0.55);
+  --filigree: rgba(173, 171, 163, 0.22);
+  --oxblood-line: rgba(110, 20, 35, 0.5);
+  --panel-lining: rgba(198, 195, 186, 0.16);
+}
+
+/* ── Silver lining: a hairline top highlight + carved bottom shadow, the
+      single treatment that makes every panel read as struck metal.
+
+      Deliberately no `position` here. This selector outweighs a Tailwind
+      utility (0,2,1 against 0,1,0), so a `position: relative` on it silently
+      tore the fixed settings drawer out of the viewport and dropped it below
+      the fold. A theme decorates; it never positions. Panels that need a
+      containing block for .panel-ornate's filigree declare it themselves —
+      `relative` on OrbColumn, `fixed` on the settings drawer. ── */
+html[data-theme='gothic'] .panel-surface {
+  box-shadow:
+    inset 0 1px 0 var(--silver-lining),
+    inset 0 -1px 0 var(--engraved-shadow);
+}
+
+/* ── Filigree corner brackets — a scrolled flourish at each corner, drawn
+      as one SVG in a pseudo-element so there is no extra DOM.
+      Opt-in via .panel-ornate rather than automatic on every .panel-surface:
+      applied blindly it landed 1px from the orb column's viewfinder
+      brackets, so two different corner motifs at two different scales read
+      as one confused cluster. Only panels with a clear corner get it. ── */
+html[data-theme='gothic'] .panel-ornate::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26' fill='none' stroke='%23ADABA3' stroke-opacity='0.3' stroke-width='1' stroke-linecap='round'%3E%3Cpath d='M1 12V4a3 3 0 013-3h8'/%3E%3Cpath d='M1 20c4 0 7-3 7-7 0-3-4-4-5-1s3 4 5 1c2-4 6-5 6-5' stroke-opacity='0.55'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: top left;
+}
+html[data-theme='gothic'] .panel-ornate::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26' fill='none' stroke='%23ADABA3' stroke-opacity='0.3' stroke-width='1' stroke-linecap='round'%3E%3Cpath d='M25 14v8a3 3 0 01-3 3h-8'/%3E%3Cpath d='M25 6c-4 0-7 3-7 7 0 3 4 4 5 1s-3-4-5-1c-2 4-6 5-6 5' stroke-opacity='0.55'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: bottom right;
+}
+
+/* ── Engraved rule: every divider in the app, cut rather than drawn. The
+      border is the dark score; the inset shadow is the silver lip that
+      catches light just below it. Applies to the shared .rule primitive, so
+      one declaration restyles every divider in the UI at once. ── */
+html[data-theme='gothic'] .rule {
+  border-top-color: var(--engraved-shadow);
+  box-shadow: inset 0 1px 0 var(--silver-lining);
+}
+html[data-theme='gothic'] .rule-b {
+  border-bottom-color: var(--engraved-shadow);
+  box-shadow: inset 0 -1px 0 var(--silver-lining);
+}
+/* The vertical edges get the score without the silver lip: they land on
+   panel containers that already carry their own inset lining, and a second
+   box-shadow on the same element would replace the first outright. */
+html[data-theme='gothic'] .rule-l {
+  border-left-color: var(--engraved-shadow);
+}
+html[data-theme='gothic'] .rule-r {
+  border-right-color: var(--engraved-shadow);
+}
+
+/* ── Ornamented rule: the same engraved score, but broken around a centred
+      lozenge flanked by two beads — the Victorian mourning-card divider. The
+      ornament is drawn twice inside one SVG, dark at y=6 and silver one pixel
+      below at y=7, so the break carries exactly the same two-tone cut as the
+      unbroken line either side of it rather than reading as a different
+      material dropped into the gap. ── */
+html[data-theme='gothic'] .rule-ornate {
+  border-top-color: transparent;
+}
+html[data-theme='gothic'] .rule-ornate::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  /* Two 1px rows: the dark score, then the silver lip beneath it. Both fade
+     out at the panel's padding edges and stop dead at the ornament's gap. */
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0,
+      var(--engraved-shadow) 12%,
+      var(--engraved-shadow) calc(50% - 27px),
+      transparent calc(50% - 27px),
+      transparent calc(50% + 27px),
+      var(--engraved-shadow) calc(50% + 27px),
+      var(--engraved-shadow) 88%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      transparent 0,
+      var(--silver-lining) 12%,
+      var(--silver-lining) calc(50% - 27px),
+      transparent calc(50% - 27px),
+      transparent calc(50% + 27px),
+      var(--silver-lining) calc(50% + 27px),
+      var(--silver-lining) 88%,
+      transparent 100%
+    );
+  background-repeat: no-repeat, no-repeat;
+  background-size: 100% 1px, 100% 1px;
+  background-position: 0 0, 0 1px;
+}
+html[data-theme='gothic'] .rule-ornate::after {
+  content: '';
+  position: absolute;
+  /* 12px tall with its centreline at y=6; -7px puts that line exactly on the
+     score row the gradient above draws at -1px. */
+  top: -7px;
+  left: 50%;
+  margin-left: -27px;
+  width: 54px;
+  height: 12px;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='12' viewBox='0 0 54 12' fill='none' stroke-width='1'%3E%3Cg stroke='%23000000' stroke-opacity='0.55'%3E%3Cpath d='M0 6H11M15 6H23M31 6H39M43 6H54'/%3E%3Ccircle cx='13' cy='6' r='2'/%3E%3Cpath d='M27 2L31 6L27 10L23 6Z'/%3E%3Ccircle cx='41' cy='6' r='2'/%3E%3C/g%3E%3Cg stroke='%23C6C3BA' stroke-opacity='0.16' transform='translate(0 1)'%3E%3Cpath d='M0 6H11M15 6H23M31 6H39M43 6H54'/%3E%3Ccircle cx='13' cy='6' r='2'/%3E%3Cpath d='M27 2L31 6L27 10L23 6Z'/%3E%3Ccircle cx='41' cy='6' r='2'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+}
+
+/* ── Section headers get letterspaced small-caps display type, the Victorian
+      mourning-card convention. ── */
+html[data-theme='gothic'] .section-title {
+  font-family: var(--type-display);
+  font-variant: small-caps;
+  letter-spacing: var(--type-tracking-wide);
+  font-weight: var(--type-weight-medium);
+}
+
+/* ── Damask ground: a repeating Victorian quatrefoil, so every raised
+      surface carries the same weave rather than a one-off decoration. ── */
+html[data-theme='gothic'] .panel-surface,
+html[data-theme='gothic'] .chat-surface {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72' fill='none' stroke='%23ADABA3' stroke-opacity='0.05' stroke-width='0.9'%3E%3Cpath d='M36 6c5 8 12 12 20 12-8 4-15 10-20 18-5-8-12-14-20-18 8 0 15-4 20-12z'/%3E%3Cpath d='M36 36c5 8 12 14 20 18-8 0-15 4-20 12-5-8-12-12-20-12 8-4 15-10 20-18z'/%3E%3Cpath d='M0 36h12M60 36h12M36 0v6M36 66v6'/%3E%3Ccircle cx='36' cy='36' r='2.2'/%3E%3C/svg%3E"),
+    var(--effect-grain-image);
+  background-repeat: repeat, repeat;
+  background-size: 72px 72px, 128px 128px;
+}
+
+/* ── The rose window sits larger and fainter than a normal watermark: it
+      should read as architecture the room is built around, not as a logo
+      dropped in the middle. Geometry comes from roseWindow.ts. ── */
+html[data-theme='gothic'] {
+  --theme-watermark-size: 620px;
+  --theme-watermark-opacity: 0.07;
+}
+
+/* ── Chat message body: carved text. The shadow pair gives the glyph a lip
+      and a shadow so it sits *in* the surface rather than on it. ── */
+html[data-theme='gothic'] .inscribe-body,
+html[data-theme='gothic'] .prose p {
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.6),
+    0 -1px 0 rgba(198, 195, 186, 0.05);
+}
+
+/* Sepulchral's reveal: whole words are struck into the surface rather than
+   letters ticking past. Each word drops the last fraction of a millimetre as
+   if under the mallet, with a brief oxblood heat at the cut that cools to the
+   carved shadow. Named in registry.ts as textReveal.animation. */
+@keyframes reveal-chisel {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.06em) scale(1.04);
+    text-shadow: 0 0 7px var(--oxblood-line);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0.01em) scale(0.995);
+    text-shadow: 0 0 3px var(--oxblood-line);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  }
+}

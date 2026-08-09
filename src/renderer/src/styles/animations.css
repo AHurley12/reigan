@@ -44,6 +44,34 @@
   100% { transform: scale(1) rotate(0deg); opacity: 1; }
 }
 
+/* Text reveal — the carrier only. Which animation runs, over what duration,
+   and on characters or whole words is set per theme via theme.textReveal and
+   written onto each unit inline by InscribeText. Each theme owns its own
+   @keyframes alongside its tokens (see gothic/ornament.css); the one below is
+   the default theme's. Composite-only properties, so this stays off the main
+   thread no matter how many units are in flight. */
+@keyframes reveal-ink {
+  from { opacity: 0; transform: translateY(0.12em) scale(0.94); }
+  60%  { opacity: 1; }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* inline-block, not inline: transform has no effect on non-replaced inline
+   boxes, so an inline unit would silently drop everything but the opacity.
+   Whitespace is emitted as bare text nodes between units, which is where the
+   line-break opportunities come from. */
+.reveal-unit {
+  display: inline-block;
+  white-space: pre-wrap;
+  animation-timing-function: var(--ease-standard);
+  animation-fill-mode: both;
+}
+
+html[data-reduced-motion='true'] .reveal-unit {
+  animation: none !important;
+  opacity: 1;
+}
+
 .animate-pulse-idle { animation: pulse-idle 4s ease-in-out infinite; }
 .animate-slide-right { animation: slide-in-right var(--duration-slow) var(--ease-spring); }
 .animate-slide-up { animation: slide-up var(--duration-normal) var(--ease-spring); }

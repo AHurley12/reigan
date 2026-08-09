@@ -4,11 +4,16 @@ import { taskStatusLabel } from '../../../../shared/constants'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type { Task, TaskPriority } from '../../../../shared/types'
 
+/**
+ * A severity ramp, not four unrelated colours: quiet → normal → notable →
+ * alarming. Stated as tokens so a skin that isn't dark still reads the ramp
+ * in the right direction.
+ */
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
-  low: '#6B6455',
-  medium: '#5B7A99',
-  high: '#C9A227',
-  critical: '#E5484D',
+  low: 'var(--text-muted)',
+  medium: 'var(--text-secondary)',
+  high: 'var(--accent-secondary)',
+  critical: 'var(--accent-danger)',
 }
 
 interface Props {
@@ -34,7 +39,7 @@ export function TaskCard({ task, onComplete, onDelete }: Props) {
       className={`group relative overflow-hidden rounded-lg p-3 transition-all duration-fast animate-slide-up ${isDone ? 'opacity-60' : ''}`}
       style={{
         background: 'var(--bg-elevated)',
-        border: `1px solid ${isOverdue ? 'rgba(229, 72, 77, 0.3)' : 'var(--border)'}`,
+        border: `1px solid ${isOverdue ? 'color-mix(in srgb, var(--accent-danger) 30%, transparent)' : 'var(--border)'}`,
         borderLeft: `3px solid ${priorityColor}`,
       }}
     >
@@ -44,7 +49,7 @@ export function TaskCard({ task, onComplete, onDelete }: Props) {
           style={{ background: 'var(--reigan-primary)', color: 'var(--text-primary)' }}
           aria-hidden="true"
         >
-          <span style={{ fontFamily: 'var(--font-seal)', fontSize: 14 }}>完</span>
+          <span style={{ fontFamily: 'var(--font-seal)', fontSize: 16 }}>完</span>
         </span>
       )}
 
@@ -87,20 +92,20 @@ export function TaskCard({ task, onComplete, onDelete }: Props) {
 
       <div className="flex items-center gap-2 mt-2">
         <span
-          className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+          className="text-[11px] font-mono px-1.5 py-0.5 rounded"
           style={{ background: 'var(--bg-surface)', color: 'var(--text-kanji)' }}
         >
           {taskStatusLabel(task.status, japaneseLevel)}
         </span>
         <span
-          className="text-[10px] capitalize"
+          className="text-[11px] capitalize"
           style={{ color: priorityColor }}
         >
           {task.priority}
         </span>
         {task.dueDate && (
           <span
-            className="text-[10px] font-mono ml-auto"
+            className="text-[11px] font-mono ml-auto"
             style={{ color: isOverdue ? 'var(--critical)' : 'var(--text-muted)' }}
           >
             {new Date(task.dueDate).toLocaleDateString()}

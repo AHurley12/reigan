@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   MessageSquare, CheckSquare, Folder, Mail,
-  Calendar, Zap, Code, Settings
+  Calendar, Zap, Code, Settings, Gauge
 } from 'lucide-react'
 import { NavItem } from './NavItem'
 import { useAppStore } from '../../stores/appStore'
@@ -14,6 +14,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   Folder: <Folder size={18} />,
   Mail: <Mail size={18} />,
   Calendar: <Calendar size={18} />,
+  Gauge: <Gauge size={18} />,
   Zap: <Zap size={18} />,
   Code: <Code size={18} />,
 }
@@ -23,12 +24,13 @@ export function NavBar() {
 
   return (
     <div
-      className="flex flex-col items-center py-2 shrink-0"
+      // py-4 rather than py-2: the frame's corner ornament runs 14px inward,
+      // and at the old padding the first and last buttons sat inside it —
+      // an active item's tinted background then collided with the moulding.
+      className="ornate flex flex-col items-center py-4 px-2 shrink-0"
       style={{
         width: 'var(--nav-width)',
         background: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border)',
-        height: '100%',
       }}
     >
       {/* Nav items */}
@@ -51,10 +53,10 @@ export function NavBar() {
       {/* Settings button */}
       <button
         onClick={() => setSettingsOpen(true)}
-        className="w-full flex items-center justify-center h-10 rounded-[3px] mx-1 transition-all duration-fast"
+        className="w-full flex items-center justify-center h-10 rounded-sm transition-all duration-fast"
         style={{
           color: settingsOpen ? 'var(--text-primary)' : 'var(--text-muted)',
-          background: settingsOpen ? 'rgba(216, 67, 42, 0.18)' : 'transparent',
+          background: settingsOpen ? 'color-mix(in srgb, var(--accent-primary) 18%, transparent)' : 'transparent',
           border: settingsOpen ? '1px solid var(--reigan-primary)' : '1px solid transparent',
         }}
         aria-label="Settings"

@@ -3,26 +3,36 @@ import { AgentExecutor, createToolCallingAgent } from 'langchain/agents'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
-import { REIGAN_SYSTEM_PROMPT } from './prompts'
-import { createTaskTool, listTasksTool, updateTaskTool, completeTaskTool } from './tools/taskTools'
+import { REIGAN_SYSTEM_PROMPT, REIGAN_UNBRIDLED_SYSTEM_PROMPT } from './prompts'
+import { createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool } from './tools/taskTools'
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
 import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTools'
+import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
+import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { googleAuth } from '../auth/googleAuth'
-import { getSetting } from '../db/queries'
+import { getDecodedSetting } from '../db/queries'
+import type { PersonalityMode } from '../../shared/types'
 
 let executor: AgentExecutor | null = null
+let executorMode: PersonalityMode | null = null
 
 function getApiKey(): string {
-  return getSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
+  return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
+}
+
+function getPersonalityMode(): PersonalityMode {
+  return getDecodedSetting('personalityMode') === 'unbridled' ? 'unbridled' : 'standard'
 }
 
 function getTools(): DynamicStructuredTool[] {
   const tools: DynamicStructuredTool[] = [
-    createTaskTool, listTasksTool, updateTaskTool, completeTaskTool,
+    createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool,
     getTimeTool, getSystemInfoTool, openAppTool,
     searchFilesTool, listDirectoryTool, readFileTool,
+    getSettingsTool, updateSettingTool,
+    getPerformanceSnapshotTool,
   ]
 
   // Only exposed once the user has connected a Google account (Settings).
@@ -34,7 +44,7 @@ function getTools(): DynamicStructuredTool[] {
   return tools
 }
 
-function buildExecutor(apiKey: string): AgentExecutor {
+function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   const llm = new ChatAnthropic({
     apiKey,
     model: 'claude-sonnet-4-6',
@@ -49,9 +59,10 @@ function buildExecutor(apiKey: string): AgentExecutor {
   })
 
   const tools = getTools()
+  const systemPrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
 
   const prompt = ChatPromptTemplate.fromMessages([
-    ['system', REIGAN_SYSTEM_PROMPT],
+    ['system', systemPrompt],
     new MessagesPlaceholder('chat_history'),
     ['human', '{input}'],
     new MessagesPlaceholder('agent_scratchpad'),
@@ -71,8 +82,10 @@ export async function* streamResponse(
     return
   }
 
-  if (!executor) {
-    executor = buildExecutor(apiKey)
+  const mode = getPersonalityMode()
+  if (!executor || executorMode !== mode) {
+    executor = buildExecutor(apiKey, mode)
+    executorMode = mode
   }
 
   const chatHistory = history.flatMap(m =>
@@ -115,4 +128,5 @@ export async function* streamResponse(
 
 export function resetExecutor(): void {
   executor = null
+  executorMode = null
 }

@@ -18,7 +18,7 @@ export function SettingRow({ label, labelJa, description, children, last }: Prop
         <div className="flex items-baseline gap-2">
           <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{label}</span>
           {labelJa && (
-            <span className="text-[11px] font-kanji" style={{ color: 'var(--text-kanji)' }}>{labelJa}</span>
+            <span className="text-[12px] font-kanji" style={{ color: 'var(--text-kanji)' }}>{labelJa}</span>
           )}
         </div>
         {description && (

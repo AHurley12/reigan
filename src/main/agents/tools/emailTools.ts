@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 import type { gmail_v1 } from 'googleapis'
+import { withPermission } from './permission'
 
 function getEmailBody(message: gmail_v1.Schema$Message): string {
   const parts = message.payload?.parts || []
@@ -16,6 +17,18 @@ function getEmailBody(message: gmail_v1.Schema$Message): string {
   }
 
   return message.snippet || '(no body)'
+}
+
+function headerValue(headers: gmail_v1.Schema$MessagePartHeader[] | undefined, name: string): string {
+  return headers?.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || ''
+}
+
+function encodeRaw(lines: string[]): string {
+  return Buffer.from(lines.join('\r\n'))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
 }
 
 export function createEmailTools(auth: OAuth2Client): DynamicStructuredTool[] {
@@ -98,23 +111,99 @@ export function createEmailTools(auth: OAuth2Client): DynamicStructuredTool[] {
       subject: z.string().describe('Email subject line'),
       body: z.string().describe('Email body text'),
     }),
-    func: async ({ to, subject, body }) => {
-      const message = [`To: ${to}`, `Subject: ${subject}`, '', body].join('\n')
+    func: async ({ to, subject, body }) =>
+      withPermission(
+        'draft_email',
+        `Save a draft email to ${to}: "${subject}"`,
+        async () => {
+          const message = [`To: ${to}`, `Subject: ${subject}`, '', body].join('\n')
+          const encoded = encodeRaw(message.split('\n'))
 
-      const encoded = Buffer.from(message)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '')
+          const response = await gmail.users.drafts.create({
+            userId: 'me',
+            requestBody: { message: { raw: encoded } },
+          })
 
-      const response = await gmail.users.drafts.create({
-        userId: 'me',
-        requestBody: { message: { raw: encoded } },
-      })
-
-      return `Draft created: "${subject}" to ${to}. Draft ID: ${response.data.id}`
-    },
+          return `Draft created: "${subject}" to ${to}. Draft ID: ${response.data.id}`
+        },
+        body
+      ),
   })
 
-  return [checkEmail, readEmail, draftEmail]
+  const replyToEmail = new DynamicStructuredTool({
+    name: 'reply_to_email',
+    description:
+      'Send a reply on an existing email thread — this actually sends, unlike draft_email. Use only when the user explicitly asks to send/reply now, not just to compose.',
+    schema: z.object({
+      threadId: z.string().describe('The Gmail thread ID to reply on'),
+      to: z.string().describe('Recipient email address'),
+      subject: z.string().describe("The thread's subject (will be prefixed with Re: if not already)"),
+      body: z.string().describe('Reply body text'),
+    }),
+    func: async ({ threadId, to, subject, body }) =>
+      withPermission(
+        'reply_to_email',
+        `Send a reply to ${to} on "${subject}"`,
+        async () => {
+          const thread = await gmail.users.threads.get({
+            userId: 'me',
+            id: threadId,
+            format: 'metadata',
+            metadataHeaders: ['Message-ID', 'References'],
+          })
+          const lastMessage = thread.data.messages?.[thread.data.messages.length - 1]
+          const messageId = headerValue(lastMessage?.payload?.headers, 'Message-ID')
+          const references = headerValue(lastMessage?.payload?.headers, 'References')
+
+          const fullSubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`
+          const lines = [`To: ${to}`, `Subject: ${fullSubject}`]
+          if (messageId) {
+            lines.push(`In-Reply-To: ${messageId}`)
+            lines.push(`References: ${[references, messageId].filter(Boolean).join(' ')}`)
+          }
+          lines.push('', body)
+
+          await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: { raw: encodeRaw(lines), threadId },
+          })
+
+          return `Reply sent to ${to} on "${fullSubject}".`
+        },
+        body
+      ),
+  })
+
+  const archiveEmail = new DynamicStructuredTool({
+    name: 'archive_email',
+    description: 'Archive an email thread (removes it from the inbox). Use when the user asks to archive or clear a message.',
+    schema: z.object({
+      threadId: z.string().describe('The Gmail thread ID to archive'),
+    }),
+    func: async ({ threadId }) =>
+      withPermission('archive_email', `Archive email thread ${threadId}`, async () => {
+        await gmail.users.threads.modify({ userId: 'me', id: threadId, requestBody: { removeLabelIds: ['INBOX'] } })
+        return `Archived thread ${threadId}.`
+      }),
+  })
+
+  const setEmailRead = new DynamicStructuredTool({
+    name: 'set_email_read_status',
+    description: 'Mark an email thread as read or unread.',
+    schema: z.object({
+      threadId: z.string().describe('The Gmail thread ID'),
+      read: z.boolean().describe('True to mark read, false to mark unread'),
+    }),
+    func: async ({ threadId, read }) =>
+      withPermission('set_email_read_status', `Mark thread ${threadId} as ${read ? 'read' : 'unread'}`, async () => {
+        await gmail.users.threads.modify({
+          userId: 'me',
+          id: threadId,
+          requestBody: read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] },
+        })
+        return `Marked thread ${threadId} as ${read ? 'read' : 'unread'}.`
+      }),
+  })
+
+  return [checkEmail, readEmail, draftEmail, replyToEmail, archiveEmail, setEmailRead]
 }

@@ -7,6 +7,13 @@ import { Slider } from '../controls/Slider'
 import { ApiKeyField } from '../controls/ApiKeyField'
 import { listAudioDevices, onDeviceChange, type DeviceOption } from '../../../voice/audioDeviceManager'
 import { startLevelMonitor } from '../../../voice/micLevelMonitor'
+import { ORB_STYLES } from '../../Orb/engine/orbRegistry'
+
+const ORB_STYLE_OPTIONS = Object.entries(ORB_STYLES).map(([value, def]) => ({
+  value,
+  label: def.label,
+  labelJa: def.labelJa,
+}))
 
 // Two reliable premade defaults (work on any plan) + 5 free-tier voices
 // pulled from the user's ElevenLabs Voice Library.
@@ -165,11 +172,18 @@ export function VoiceSettings() {
         <SettingRow label="Shingan voice" labelJa="音声選択">
           <Select value={settings.voiceId} options={VOICE_OPTIONS} onChange={(v) => set('voiceId', v)} />
         </SettingRow>
-        <SettingRow label="Input mode" labelJa="入力モード" description="Ctrl+Shift+Space starts/stops listening from anywhere." last>
+        <SettingRow label="Input mode" labelJa="入力モード" description="Ctrl+Shift+Space starts/stops listening from anywhere.">
           <Select
             value={String(settings.pushToTalk)}
             options={INPUT_MODE_OPTIONS}
             onChange={(v) => set('pushToTalk', v === 'true')}
+          />
+        </SettingRow>
+        <SettingRow label="Voice orb" labelJa="オーブ" description="Visual style of the orb shown while listening/speaking." last>
+          <Select
+            value={settings.voiceOrbStyle}
+            options={ORB_STYLE_OPTIONS}
+            onChange={(v) => set('voiceOrbStyle', v)}
           />
         </SettingRow>
       </div>

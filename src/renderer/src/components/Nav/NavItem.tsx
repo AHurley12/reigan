@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
+// `m`, not `motion`: LockGate wraps the whole app in <LazyMotion ... strict>,
+// and strict mode throws on a `motion` component rather than warning — which
+// unmounts the React tree and leaves a black window. See LockGate.tsx.
+import { m } from 'framer-motion'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { hasKanji } from '../../i18n/kanji'
 import { FuriganaText } from '../shared/FuriganaText'
@@ -29,19 +32,23 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
         onClick={onClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className="relative w-full flex items-center justify-center h-10 mx-1 rounded-[3px] transition-colors duration-fast"
+        // No mx-*: `w-full` plus a horizontal margin makes the button wider
+        // than its container, and it overhung the rail's border by 7px — which
+        // only became visible once the rail carried a moulding to overhang.
+        // The breathing room is the rail's own px-2 instead.
+        className="relative w-full flex items-center justify-center h-10 rounded-sm transition-colors duration-fast"
         style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}
         aria-label={en}
         aria-current={isActive}
       >
         {isActive && (
-          <motion.span
+          <m.span
             layoutId="nav-hanko"
-            className="absolute inset-0 rounded-[3px]"
+            className="absolute inset-0 rounded-sm"
             style={{
-              background: 'rgba(216, 67, 42, 0.18)',
+              background: 'color-mix(in srgb, var(--accent-primary) 18%, transparent)',
               border: '1px solid var(--reigan-primary)',
-              boxShadow: '0 0 12px rgba(216, 67, 42, 0.25)',
+              boxShadow: '0 0 12px color-mix(in srgb, var(--accent-primary) 25%, transparent)',
             }}
             transition={{ type: 'spring', stiffness: 500, damping: 34 }}
           />
@@ -57,7 +64,7 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
           style={{
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border-hover)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            boxShadow: 'var(--bevel-outer)',
           }}
         >
           <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{en}</span>
@@ -71,7 +78,7 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
           )}
           {shortcut && (
             <span className="mt-1 px-1.5 py-0.5 rounded text-center"
-              style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '10px' }}>
+              style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
               {shortcut}
             </span>
           )}

@@ -55,7 +55,7 @@ export function Slider({ min, max, step, value, onChange, formatLabel }: Props) 
           }}
         />
       </div>
-      <span className="font-mono text-[11px] text-right shrink-0" style={{ color: 'var(--text-muted)', width: 36 }}>
+      <span className="font-mono text-[12px] text-right shrink-0" style={{ color: 'var(--text-muted)', width: 36 }}>
         {formatLabel ? formatLabel(local) : local}
       </span>
     </div>

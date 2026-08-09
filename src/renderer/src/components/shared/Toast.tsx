@@ -25,7 +25,7 @@ export function ToastStack() {
             style={{
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border-hover)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+              boxShadow: 'var(--bevel-outer)',
             }}
           >
             <Icon size={16} style={{ color, flexShrink: 0, marginTop: 1 }} />

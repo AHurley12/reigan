@@ -1,7 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC, type FileSearchParams } from '../shared/types'
+import { authBridge } from './authBridge'
+
+// Main reads the persisted theme synchronously (better-sqlite3) before creating
+// the window and passes it here via additionalArguments, so we can stamp
+// data-theme before the renderer's own scripts run — zero flash of the wrong
+// theme, since applyTokens() in ThemeProvider resolves the same id.
+const THEME_ARG_PREFIX = '--initial-theme='
+const themeArg = process.argv.find((arg) => arg.startsWith(THEME_ARG_PREFIX))
+const initialThemeId = themeArg ? themeArg.slice(THEME_ARG_PREFIX.length) : 'shingan'
+
+// Preload can run before the document exists. Stamping unguarded throws here
+// and takes the whole contextBridge exposure below down with it.
+function stampInitialTheme(): void {
+  document.documentElement?.setAttribute('data-theme', initialThemeId)
+}
+try {
+  if (document.documentElement) stampInitialTheme()
+  else document.addEventListener('DOMContentLoaded', stampInitialTheme, { once: true })
+} catch {
+  // Never let theming take down the contextBridge exposure below.
+}
 
 const api = {
+  initialThemeId,
+
   // LLM
   sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) =>
     ipcRenderer.invoke(IPC.LLM_SEND, payload),
@@ -29,6 +52,7 @@ const api = {
   voice: {
     startListening: () => ipcRenderer.invoke(IPC.VOICE_START),
     stopListening: () => ipcRenderer.invoke(IPC.VOICE_STOP),
+    stopSpeaking: () => ipcRenderer.invoke(IPC.VOICE_STOP_SPEAKING),
     sendAudioChunk: (buffer: ArrayBuffer) => ipcRenderer.send(IPC.VOICE_AUDIO_CHUNK, buffer),
     sendAmplitude: (rms: number) => ipcRenderer.send(IPC.VOICE_AMPLITUDE, rms),
     onTranscript: (callback: (data: { text: string; isFinal: boolean }) => void) => {
@@ -36,8 +60,8 @@ const api = {
       ipcRenderer.on(IPC.VOICE_TRANSCRIPT, handler)
       return () => ipcRenderer.removeListener(IPC.VOICE_TRANSCRIPT, handler)
     },
-    onAudioPlayback: (callback: (audioBuffer: ArrayBuffer) => void) => {
-      const handler = (_: unknown, audioBuffer: ArrayBuffer) => callback(audioBuffer)
+    onAudioPlayback: (callback: (audioBuffer: Uint8Array) => void) => {
+      const handler = (_: unknown, audioBuffer: Uint8Array) => callback(audioBuffer)
       ipcRenderer.on(IPC.VOICE_AUDIO_PLAYBACK, handler)
       return () => ipcRenderer.removeListener(IPC.VOICE_AUDIO_PLAYBACK, handler)
     },
@@ -83,6 +107,12 @@ const api = {
     setRead: (threadId: string, read: boolean) => ipcRenderer.invoke(IPC.MAIL_SET_READ, { threadId, read }),
   },
 
+  // Avatar
+  avatar: {
+    saveModel: (data: ArrayBuffer) => ipcRenderer.invoke(IPC.AVATAR_SAVE_MODEL, data),
+    loadModel: () => ipcRenderer.invoke(IPC.AVATAR_LOAD_MODEL),
+  },
+
   // Files (read-only browse/search)
   files: {
     listDir: (dirPath?: string) => ipcRenderer.invoke(IPC.FILES_LIST_DIR, dirPath),
@@ -93,6 +123,21 @@ const api = {
     open: (filePath: string) => ipcRenderer.invoke(IPC.FILES_OPEN, filePath),
     reveal: (filePath: string) => ipcRenderer.invoke(IPC.FILES_REVEAL, filePath),
   },
+
+  // Performance
+  perf: {
+    staticInfo: () => ipcRenderer.invoke(IPC.PERF_STATIC_INFO),
+    start: () => ipcRenderer.invoke(IPC.PERF_START),
+    stop: () => ipcRenderer.invoke(IPC.PERF_STOP),
+    onSample: (callback: (sample: import('../shared/types').PerfSample) => void) => {
+      const handler = (_: unknown, sample: import('../shared/types').PerfSample) => callback(sample)
+      ipcRenderer.on(IPC.PERF_SAMPLE, handler)
+      return () => ipcRenderer.removeListener(IPC.PERF_SAMPLE, handler)
+    },
+  },
+
+  // Voice authentication (lock screen). See preload/authBridge.ts.
+  auth: authBridge,
 
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),

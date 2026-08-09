@@ -2,6 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { google, calendar_v3 } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
+import { withPermission } from './permission'
 
 const TIMEZONE = 'America/New_York'
 
@@ -69,22 +70,27 @@ export function createCalendarTools(auth: OAuth2Client): DynamicStructuredTool[]
       description: z.string().optional().describe('Event description'),
       location: z.string().optional().describe('Event location'),
     }),
-    func: async ({ title, startTime, endTime, description, location }) => {
-      const event: calendar_v3.Schema$Event = {
-        summary: title,
-        description,
-        location,
-        start: { dateTime: startTime, timeZone: TIMEZONE },
-        end: { dateTime: endTime, timeZone: TIMEZONE },
-      }
+    func: async ({ title, startTime, endTime, description, location }) =>
+      withPermission(
+        'create_calendar_event',
+        `Add "${title}" to your calendar (${formatTime(startTime)} → ${formatTime(endTime)})`,
+        async () => {
+          const event: calendar_v3.Schema$Event = {
+            summary: title,
+            description,
+            location,
+            start: { dateTime: startTime, timeZone: TIMEZONE },
+            end: { dateTime: endTime, timeZone: TIMEZONE },
+          }
 
-      const response = await calendar.events.insert({
-        calendarId: 'primary',
-        requestBody: event,
-      })
+          const response = await calendar.events.insert({
+            calendarId: 'primary',
+            requestBody: event,
+          })
 
-      return `Event created: "${response.data.summary}" on ${formatTime(response.data.start?.dateTime || '')}`
-    },
+          return `Event created: "${response.data.summary}" on ${formatTime(response.data.start?.dateTime || '')}`
+        }
+      ),
   })
 
   const deleteEvent = new DynamicStructuredTool({
@@ -93,10 +99,11 @@ export function createCalendarTools(auth: OAuth2Client): DynamicStructuredTool[]
     schema: z.object({
       eventId: z.string().describe('The Google Calendar event ID to delete'),
     }),
-    func: async ({ eventId }) => {
-      await calendar.events.delete({ calendarId: 'primary', eventId })
-      return 'Event deleted successfully.'
-    },
+    func: async ({ eventId }) =>
+      withPermission('delete_calendar_event', `Permanently delete calendar event ${eventId}`, async () => {
+        await calendar.events.delete({ calendarId: 'primary', eventId })
+        return 'Event deleted successfully.'
+      }),
   })
 
   return [listEvents, createEvent, deleteEvent]

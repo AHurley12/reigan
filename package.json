@@ -28,6 +28,7 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
+    "systeminformation": "^5.33.1",
     "three": "^0.185.1",
     "zustand": "^5.0.0"
   },

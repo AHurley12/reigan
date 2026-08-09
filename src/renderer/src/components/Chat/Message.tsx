@@ -28,7 +28,7 @@ export function Message({ message }: Props) {
             {message.content}
           </div>
           <div className="text-right mt-1">
-            <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>
               {formatTime(message.timestamp)}
             </span>
           </div>
@@ -52,7 +52,7 @@ export function Message({ message }: Props) {
         >
           SHINGAN
         </span>
-        <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {formatTime(message.timestamp)}
         </span>
       </div>

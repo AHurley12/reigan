@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { InscribeText } from './InscribeText'
 
 interface Props {
   content: string
@@ -37,15 +38,23 @@ export function StreamingText({ content, isStreaming }: Props) {
       [&_h2]:font-display [&_h2]:text-txt-primary
       [&_h3]:font-display [&_h3]:text-txt-primary
     ">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {content}
-      </ReactMarkdown>
+      {/* While streaming, characters are inscribed in as they arrive; once the
+          response settles it re-renders as full markdown. */}
+      {isStreaming ? (
+        <p className="inscribe-body" style={{ color: 'var(--text-secondary)' }}>
+          <InscribeText text={content} />
+        </p>
+      ) : (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {content}
+        </ReactMarkdown>
+      )}
       {showCursor && (
         <span
-          className={`inline-block w-0.5 h-4 ml-0.5 align-middle ${
+          className={`response-cursor inline-block w-0.5 h-4 ml-0.5 align-middle ${
             isStreaming ? 'animate-cursor' : 'animate-cursor-out'
           }`}
-          style={{ background: 'var(--reigan-secondary)' }}
+          style={{ background: 'var(--accent-primary)' }}
         />
       )}
     </div>

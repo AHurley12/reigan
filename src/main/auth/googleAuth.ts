@@ -2,7 +2,7 @@ import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 import { createServer, type Server } from 'http'
 import { shell } from 'electron'
-import { getSetting, setSetting } from '../db/queries'
+import { getSetting, setSetting, getDecodedSetting } from '../db/queries'
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.modify']
 
@@ -21,8 +21,8 @@ class GoogleAuthManager {
   private client: OAuth2Client | null = null
 
   private getClientCredentials(): { clientId: string; clientSecret: string } | null {
-    const clientId = getSetting('googleClientId')
-    const clientSecret = getSetting('googleClientSecret')
+    const clientId = getDecodedSetting('googleClientId')
+    const clientSecret = getDecodedSetting('googleClientSecret')
     if (!clientId || !clientSecret) return null
     return { clientId, clientSecret }
   }
@@ -145,3 +145,15 @@ class GoogleAuthManager {
 }
 
 export const googleAuth = new GoogleAuthManager()
+
+/**
+ * True when `err` is Google's "invalid_grant" response — the stored refresh
+ * token was revoked or expired (common for OAuth clients left in "Testing"
+ * status, where Google kills refresh tokens after 7 days). Callers should
+ * treat this the same as "never connected" rather than surfacing a raw
+ * network error.
+ */
+export function isInvalidGrantError(err: unknown): boolean {
+  const data = (err as { response?: { data?: { error?: string } } })?.response?.data
+  return data?.error === 'invalid_grant'
+}

@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
 import { streamResponse } from '../agents/reigan'
-import { saveMessage, createConversation, getSetting } from '../db/queries'
+import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 
 let activeConversationId: string | null = null
@@ -23,7 +23,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     saveMessage({ conversationId: activeConversationId, role: 'user', content: message })
 
     let fullResponse = ''
-    const hasKey = !!getSetting('anthropicApiKey')
+    const hasKey = !!getDecodedSetting('anthropicApiKey')
 
     if (!hasKey) {
       const placeholder = 'REIGAN is not yet connected. Add your Anthropic API key in Settings (Ctrl+,).'
@@ -47,9 +47,13 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     mainWindow.webContents.send(IPC.LLM_STREAM, { token: '', done: true, conversationId: activeConversationId })
     saveMessage({ conversationId: activeConversationId, role: 'assistant', content: fullResponse })
 
-    if (voiceManager.consumeExpectSpokenReply()) {
-      const elevenLabsApiKey = getSetting('elevenLabsApiKey') ?? ''
-      const voiceId = getSetting('voiceId') ?? undefined
+    const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
+    const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
+    const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)
+
+    if (shouldSpeak) {
+      const elevenLabsApiKey = getDecodedSetting('elevenLabsApiKey') ?? ''
+      const voiceId = getDecodedSetting('voiceId') ?? undefined
       const stabilityRaw = Number(getSetting('ttsStability'))
       const similarityRaw = Number(getSetting('ttsSimilarity'))
       const stability = Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5

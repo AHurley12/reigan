@@ -1,6 +1,6 @@
 // ── App State ──
 export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'success';
-export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'automations' | 'dev';
+export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'performance' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
 export type PersonalityMode = 'standard' | 'unbridled';
 
@@ -60,6 +60,10 @@ export interface AppSettings {
   audioOutputDeviceId: string;
   personalityMode: PersonalityMode;
   unbridledModeAcknowledged: boolean;
+  avatarModelChoice: string;
+  avatarCustomModelLabel: string;
+  voiceOrbStyle: string;
+  theme: string;
 }
 
 // ── Voice ──
@@ -143,6 +147,82 @@ export interface FileIndexStatus {
   homeDir: string;
 }
 
+// ── Performance ──
+export type PerfStatus = 'good' | 'warning' | 'critical';
+
+export interface PerfStaticInfo {
+  cpuModel: string;
+  cpuCores: number;
+  totalMemBytes: number;
+  gpuModels: string[];
+  volumes: { mount: string; totalBytes: number }[];
+}
+
+export interface PerfCpu {
+  loadPercent: number;
+  perCore: number[];
+  temperatureC: number | null;
+}
+
+export interface PerfMemory {
+  usedBytes: number;
+  totalBytes: number;
+  usedPercent: number;
+}
+
+export interface PerfGpu {
+  model: string;
+  utilizationPercent: number | null;
+  vramUsedBytes: number | null;
+  vramTotalBytes: number | null;
+  temperatureC: number | null;
+}
+
+export interface PerfDiskVolume {
+  mount: string;
+  usedBytes: number;
+  totalBytes: number;
+  usedPercent: number;
+}
+
+export interface PerfDisk {
+  volumes: PerfDiskVolume[];
+  readBytesPerSec: number;
+  writeBytesPerSec: number;
+}
+
+export interface PerfNetworkInterface {
+  name: string;
+  rxBytesPerSec: number;
+  txBytesPerSec: number;
+}
+
+export interface PerfProcess {
+  pid: number;
+  name: string;
+  cpuPercent: number;
+  memBytes: number;
+}
+
+export interface PerfSample {
+  timestamp: number;
+  cpu: PerfCpu;
+  memory: PerfMemory;
+  gpu: PerfGpu[];
+  disk: PerfDisk;
+  network: PerfNetworkInterface[];
+  processes: PerfProcess[];
+}
+
+// ── Agent ──
+/** A pending edit Shingan wants to make — surfaced in the UI for approve/deny before it runs. */
+export interface AgentPermissionRequest {
+  id: string;
+  tool: string;
+  summary: string;
+  detail?: string;
+}
+
 // ── IPC Channel Names ──
 export const IPC = {
   // LLM
@@ -157,6 +237,9 @@ export const IPC = {
   // System
   SYSTEM_INFO: 'system:info',
   APP_OPEN: 'app:open',
+  // Agent
+  AGENT_PERMISSION_REQUEST: 'agent:permission-request',
+  AGENT_PERMISSION_RESPOND: 'agent:permission-respond',
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -187,6 +270,9 @@ export const IPC = {
   MAIL_REPLY: 'mail:reply',
   MAIL_ARCHIVE: 'mail:archive',
   MAIL_SET_READ: 'mail:set-read',
+  // Avatar
+  AVATAR_SAVE_MODEL: 'avatar:save-model',
+  AVATAR_LOAD_MODEL: 'avatar:load-model',
   // Files (read-only browse/search — see src/main/files/fileIndexer.ts for scope rules)
   FILES_LIST_DIR: 'files:list-dir',
   FILES_SEARCH: 'files:search',
@@ -195,4 +281,9 @@ export const IPC = {
   FILES_READ_CONTENT: 'files:read-content',
   FILES_OPEN: 'files:open',
   FILES_REVEAL: 'files:reveal',
+  // Performance
+  PERF_STATIC_INFO: 'perf:static-info',
+  PERF_START: 'perf:start',
+  PERF_STOP: 'perf:stop',
+  PERF_SAMPLE: 'perf:sample',
 } as const;

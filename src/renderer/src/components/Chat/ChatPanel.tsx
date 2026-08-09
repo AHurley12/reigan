@@ -38,8 +38,8 @@ export function ChatPanel() {
       {/* Message list */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-6"
-        style={{ background: 'var(--bg-void)' }}
+        className="chat-surface flex-1 overflow-y-auto px-6 py-6"
+        style={{ backgroundColor: 'transparent' }}
       >
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">

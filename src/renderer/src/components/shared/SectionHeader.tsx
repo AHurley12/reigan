@@ -18,12 +18,12 @@ export function SectionHeader({ en, ja, romaji, className = '' }: Props) {
 
   return (
     <div className={`flex flex-col gap-0.5 ${className}`}>
-      <span className="font-display text-txt-primary font-medium tracking-wide">{en}</span>
+      <span className="section-title font-display text-txt-primary font-medium tracking-wide">{en}</span>
       {level >= 1 && (
         <span className="font-body text-txt-kanji text-xs flex items-baseline gap-1.5">
           {withFurigana ? <FuriganaText text={ja} reading={romaji!} /> : ja}
           {showRomaji && romaji && !withFurigana && (
-            <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>{romaji}</span>
+            <span className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>{romaji}</span>
           )}
         </span>
       )}
