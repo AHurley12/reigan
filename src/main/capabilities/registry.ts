@@ -60,7 +60,11 @@ export function registerCapability<TArgs, TResult>(def: CapabilityDef<TArgs, TRe
     )
   }
 
-  const needsApproval = def.risk === 'write' || def.risk === 'destructive'
+  // A dynamic tier can escalate to write/destructive at call time, so such a
+  // capability needs an approval spec regardless of what it declares
+  // statically — otherwise the escalation would hit `cap.approval!` at
+  // dispatch and crash instead of prompting.
+  const needsApproval = def.risk === 'write' || def.risk === 'destructive' || !!def.dynamicRisk
   if (needsApproval && !def.approval) {
     throw new Error(
       `Capability "${def.id}" is risk:${def.risk} and must declare an approval spec. ` +
@@ -176,7 +180,19 @@ export async function invokeCapability(
   // own click initiated it. A UI invocation *is* the user acting; prompting them
   // to approve the button they just pressed is noise, and trains the reflex to
   // approve without reading — which is exactly what breaks the agent case.
-  const needsApproval = cap.risk === 'write' || cap.risk === 'destructive'
+  // A capability may narrow (or raise) its tier for this particular call —
+  // see CapabilityDef.dynamicRisk. Falls back to the declared tier, so
+  // anything that throws or is absent keeps the stricter static answer.
+  let effectiveRisk = cap.risk
+  if (cap.dynamicRisk) {
+    try {
+      effectiveRisk = cap.dynamicRisk(args)
+    } catch {
+      effectiveRisk = cap.risk
+    }
+  }
+
+  const needsApproval = effectiveRisk === 'write' || effectiveRisk === 'destructive'
   if (needsApproval && (ctx.invokedBy !== 'ui' || requireApprovalForAll())) {
     const spec = cap.approval!
     let diff: CapabilityDiff | null = null
@@ -191,7 +207,7 @@ export async function invokeCapability(
     const outcome = await requestApproval({
       capabilityId: cap.id,
       title: cap.title,
-      risk: cap.risk,
+      risk: effectiveRisk,
       summary: spec.summary(args),
       diff,
       args,
