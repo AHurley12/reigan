@@ -68,6 +68,14 @@ function createWindow(initialThemeId: string): BrowserWindow {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // Cold-start budget instrumentation. Gated behind an env var so it costs
+    // nothing normally, and lives in the shipped code path so before/after
+    // numbers are measured identically rather than by hand-editing.
+    if (process.env.REIGAN_STARTUP_TRACE) {
+      // process.uptime() covers Electron boot too, which is what "cold start"
+      // means to the user — not just the time since our first line ran.
+      console.log(`[startup] ready-to-show ${(process.uptime() * 1000).toFixed(0)}ms`)
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
