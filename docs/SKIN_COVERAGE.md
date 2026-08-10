@@ -202,3 +202,44 @@ skin exposed:
 | Cut | Why |
 | --- | --- |
 | Grass/leaf silhouette in the ambient layer | Built, rendered, looked at, deleted. The app's panels cover the bottom of the window edge to edge, so a band along the bottom of the ambient layer has no exposed real estate — behind 40% white and a 9px blur it produced nothing but a faint darkening. An invisible element that still costs a raster is worse than no element. |
+
+---
+
+## Dev Tools addendum
+
+Components added by the Dev Tools tab build. Every one was written against
+tokens from the start rather than converted afterwards, so the "before" column
+that the original audit needed does not apply — the check here is that nothing
+reintroduced a hardcoded value.
+
+Verified by grepping the new tree for hex literals, `rgb(`/`rgba(`, and
+Tailwind colour utilities (`bg-white`, `text-black`, `border-gray-*`): zero
+matches.
+
+| Component | Mount | Tokens used |
+| --- | --- | --- |
+| DevTools/DevToolsPanel | ⚡ module = dev | `--accent-primary`, `--reigan-primary`, `--text-primary/muted/kanji`, `--bg-elevated` |
+| DevTools/devtoolsRegistry | — | no styling (registry only) |
+| DevTools/shared/AsyncPane | ⚡ every view, all three states | `--bg-elevated`, `--border`, `--text-primary/secondary/muted`, `--status-critical`, `--accent-primary` |
+| DevTools/shared/VirtualList | ⚡ lists > 200 rows | no colour of its own (layout only) |
+| DevTools/views/ProjectsView | ⚡ sub-tab = projects | `--status-good/warning/critical` (status ramp), `--bg-elevated`, `--border`, `--border-accent`, `--accent-primary`, `--text-*` |
+| DevTools/views/PortsView | ⚡ sub-tab = ports | `--status-warning/critical`, `--bg-elevated`, `--border`, `--text-*` |
+| DevTools/views/ShellView | ⚡ sub-tab = shell | `--status-good/warning/critical` (classification tiers), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
+| DevTools/views/OrganizerView | ⚡ sub-tab = organizer | `--accent-primary`, `--border`, `--border-accent`, `--bg-elevated`, `--status-good`, `--text-*` |
+| DevTools/views/VaultView | ⚡ sub-tab = vault | `--status-warning` (secret badge), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
+| DevTools/views/GitHubView | ⚡ sub-tab = github | `--text-secondary/muted` |
+
+### Notes
+
+**No new tokens were added.** Project activity status (active / warm / dormant
+/ abandoned) and shell classification tiers (allow / approval / block) both
+reuse the existing `--status-good` / `--status-warning` / `--status-critical`
+ramp that the Performance views already use. A parallel palette would have
+looked identical on the shipped skins and then drifted the moment a fourth
+skin retuned one ramp and not the other.
+
+**Conditional mounts.** Every view here is `⚡` twice over — the tab is
+`React.lazy` and each sub-section is too, so none of them appear in a default
+screenshot. AsyncPane's error and empty branches need their states forced to
+be seen at all, which is exactly where the original audit found coverage gaps
+hiding.
