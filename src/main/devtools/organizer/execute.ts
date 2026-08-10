@@ -6,6 +6,7 @@ import { getDatabase } from '../../db/database'
 import { getGuardContext } from '../../fileops/allowlist'
 import { guardPath } from '../../fileops/pathGuard'
 import { sha256File } from '../../fileops/hash'
+import { recordDevToolsError } from '../errorLog'
 import type { Plan, PlannedOp } from './plan'
 
 /**
@@ -70,6 +71,16 @@ export async function executePlan(
       if (op.type === 'move' || op.type === 'copy') bytesMoved += op.sizeBytes
     } catch (err) {
       failed.push({ path: op.sourcePath, error: err instanceof Error ? err.message : String(err) })
+      // The run itself still succeeds, so nothing downstream will ever see
+      // this. Without a durable record, "the organiser said it moved them but
+      // three are still there" is unanswerable after the result is discarded.
+      recordDevToolsError({
+        feature: 'organizer',
+        operation: 'executeOp',
+        error: err,
+        subject: op.sourcePath,
+        context: { runId, opType: op.type, destPath: op.destPath ?? null },
+      })
     }
   }
 
@@ -225,6 +236,17 @@ export async function undoRun(runId: string): Promise<UndoResult> {
       reversed += 1
     } catch (err) {
       failed.push({ path: destPath ?? sourcePath, reason: err instanceof Error ? err.message : String(err) })
+      // A failed undo is the worst outcome this feature has — the file is
+      // neither where it started nor where the user asked it back to — so it
+      // is logged as fatal rather than error.
+      recordDevToolsError({
+        feature: 'organizer',
+        operation: 'undoOp',
+        error: err,
+        subject: destPath ?? sourcePath,
+        severity: 'fatal',
+        context: { runId, opType, sourcePath, destPath },
+      })
     }
   }
 

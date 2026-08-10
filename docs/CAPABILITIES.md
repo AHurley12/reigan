@@ -238,6 +238,44 @@ worse than one that obviously is not.
 populated — the scanner records each project's `remote_url`. Device-flow auth,
 sync, insights and the view remain.
 
+## Error log
+
+`devtools_errors` (migration 12), surfaced as the **Errors** sub-tab and as
+`devtools.listErrors` / `devtools.clearErrors`.
+
+| id | Risk | Notes |
+| --- | --- | --- |
+| `devtools.listErrors` | read | Filter by feature, severity, age. Returns a summary alongside the rows |
+| `devtools.clearErrors` | destructive | Whole log, or one feature. Prompts like any delete |
+
+**Why this is not `capability_audit`.** The audit table records *dispatches*,
+so it only ever sees a failure that propagated out of a handler. These
+features fail partially far more often than they fail outright — an organiser
+run executes 197 of 200 ops, a scan is denied on one tree and indexes fewer
+projects, ports list without process names. Every one of those is a successful
+capability call. Before this table they lived in a local array that was
+returned once and then dropped, which is why "the scan says it worked but that
+project is missing" had no answer.
+
+Three properties keep it useful rather than noisy:
+
+- **Recording never throws.** A logging failure is swallowed; it must not be
+  able to fail the operation it is describing.
+- **Identical failures collapse.** One row with an occurrence count, keyed on
+  feature + operation + code + the message with digits normalised out. A tree
+  the user cannot read produces one row saying so, not four hundred.
+- **Retention is bounded** at 500 rows, enforced on write.
+
+Severity is `warning` (degraded but working), `error` (the operation failed),
+or `fatal` (a data or safety consequence). The two `fatal` sites are a failed
+organiser *undo* — the file is neither where it started nor where it was asked
+back to — and `shell.loadUserRules` failing, which silently discards the
+user's own `block` rules and falls back to built-in classification alone.
+
+Context values are redacted on the same key list the audit log uses. The table
+is plaintext so it can be grepped, so a secret must be dropped before it
+arrives rather than encrypted after.
+
 ---
 
 ## Adding a capability

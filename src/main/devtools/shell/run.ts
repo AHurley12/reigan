@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { existsSync } from 'fs'
 import { app } from 'electron'
 import { getDatabase } from '../../db/database'
+import { recordDevToolsError } from '../errorLog'
 import type { Tier, UserRule } from './classify'
 
 /**
@@ -173,7 +174,18 @@ export function loadUserRules(): UserRule[] {
       .prepare('SELECT pattern, tier, is_regex FROM shell_rules')
       .all() as Array<{ pattern: string; tier: Tier; is_regex: number }>
     return rows.map((r) => ({ pattern: r.pattern, tier: r.tier, isRegex: !!r.is_regex }))
-  } catch {
+  } catch (err) {
+    // Returning [] falls back to the built-in lists, which is the safe
+    // direction for `allow` rules but silently discards the user's `block`
+    // ones — a command they had explicitly forbidden would be classified on
+    // built-ins alone and could run. Never let that happen quietly.
+    recordDevToolsError({
+      feature: 'shell',
+      operation: 'loadUserRules',
+      error: err,
+      severity: 'fatal',
+      context: { consequence: 'user shell rules ignored; built-in classification only' },
+    })
     return []
   }
 }

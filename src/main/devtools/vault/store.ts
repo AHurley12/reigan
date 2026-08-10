@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getDatabase } from '../../db/database'
 import { decryptSecret, encryptSecret } from '../../db/secrets'
+import { recordDevToolsError } from '../errorLog'
 
 /**
  * Snippet & config vault.
@@ -204,9 +205,19 @@ export function searchSnippets(query: string, limit = 25): Snippet[] {
       )
       .all(toFtsQuery(query), limit) as any[]
     return rows.map(rowToSnippet)
-  } catch {
+  } catch (err) {
     // FTS5 rejects some user input as a malformed match expression; a LIKE
     // fallback keeps search working rather than surfacing a syntax error.
+    // Recorded as a warning because the fallback searches title and
+    // description only — a body match the user expected simply will not
+    // appear, and the results look complete either way.
+    recordDevToolsError({
+      feature: 'vault',
+      operation: 'searchSnippets',
+      error: err,
+      severity: 'warning',
+      context: { consequence: 'fell back to LIKE; snippet bodies not searched' },
+    })
     const rows = db
       .prepare(
         `SELECT * FROM snippets WHERE title LIKE ? OR description LIKE ? ORDER BY updated_at DESC LIMIT ?`

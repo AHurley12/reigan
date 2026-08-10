@@ -9,6 +9,15 @@ import {
   type ProjectSummary,
   type ProjectWithFlags,
 } from '../../devtools/scanner/store'
+import {
+  clearDevToolsErrors,
+  listDevToolsErrors,
+  summariseDevToolsErrors,
+  type DevToolsErrorRow,
+  type DevToolsErrorSeverity,
+  type DevToolsErrorSummary,
+  type DevToolsFeature,
+} from '../../devtools/errorLog'
 import { CapabilityError, type AnyCapability } from '../types'
 
 /**
@@ -273,5 +282,83 @@ export const devtoolsCapabilities: AnyCapability[] = [
       r.roots.length
         ? `Scanning: ${r.roots.join(', ')}`
         : 'No scan roots are configured and none of the usual folders exist.',
+  },
+
+  {
+    id: 'devtools.listErrors',
+    title: 'List Dev Tools errors',
+    description:
+      "Recent failures inside the Dev Tools features, newest first. This is the first thing to check when a Dev Tools feature behaves oddly — most of what it records are *partial* failures that the feature itself reported as success: files an organiser run could not move, directories a scan was denied, ports listed without a process name. Identical failures are collapsed into one entry with an occurrence count. Severity: warning = degraded but working, error = the operation failed, fatal = data or safety consequence.",
+    risk: 'read',
+    schema: z.object({
+      feature: z
+        .enum(['scanner', 'localhost', 'shell', 'organizer', 'vault', 'github'])
+        .optional()
+        .describe('Only this feature.'),
+      severity: z.enum(['warning', 'error', 'fatal']).optional(),
+      sinceHours: z
+        .number()
+        .int()
+        .min(1)
+        .max(24 * 90)
+        .optional()
+        .describe('Only failures last seen within this many hours.'),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    handler: async (args: {
+      feature?: DevToolsFeature
+      severity?: DevToolsErrorSeverity
+      sinceHours?: number
+      limit?: number
+    }) => {
+      const since =
+        args.sinceHours === undefined ? undefined : Date.now() - args.sinceHours * 60 * 60 * 1000
+      const errors = listDevToolsErrors({
+        feature: args.feature,
+        severity: args.severity,
+        since,
+        limit: args.limit,
+      })
+      return { errors, summary: summariseDevToolsErrors(since) }
+    },
+    formatResult: (r: { errors: DevToolsErrorRow[]; summary: DevToolsErrorSummary }) => {
+      if (r.errors.length === 0) return 'No Dev Tools errors recorded for that filter.'
+      const lines = r.errors.slice(0, 30).map((e) => {
+        const repeat = e.occurrences > 1 ? ` ×${e.occurrences}` : ''
+        const subject = e.subject ? `\n    ${e.subject}` : ''
+        return `  • [${e.severity}] ${e.feature}/${e.operation}${repeat} — ${e.message}${subject}`
+      })
+      const more = r.errors.length > 30 ? `\n  …and ${r.errors.length - 30} more.` : ''
+      const head = `${r.summary.distinct} distinct problem(s), ${r.summary.total} occurrence(s).`
+      return `${head}\n\n${lines.join('\n')}${more}`
+    },
+  },
+
+  {
+    id: 'devtools.clearErrors',
+    title: 'Clear the Dev Tools error log',
+    description:
+      'Delete recorded Dev Tools errors, optionally for one feature only. Use after fixing the underlying cause, so what remains is current.',
+    // Destroys a diagnostic record and nothing else, but it is still deletion
+    // the user cannot undo, so it prompts like any other delete.
+    risk: 'destructive',
+    schema: z.object({
+      feature: z
+        .enum(['scanner', 'localhost', 'shell', 'organizer', 'vault', 'github'])
+        .optional()
+        .describe('Clear only this feature. Omit to clear everything.'),
+    }),
+    approval: {
+      summary: (args: { feature?: DevToolsFeature }) =>
+        args.feature
+          ? `Clear recorded ${args.feature} errors`
+          : 'Clear the entire Dev Tools error log',
+    },
+    handler: async (args: { feature?: DevToolsFeature }) => ({
+      cleared: clearDevToolsErrors(args.feature),
+      feature: args.feature ?? null,
+    }),
+    formatResult: (r: { cleared: number; feature: string | null }) =>
+      `Cleared ${r.cleared} error record(s)${r.feature ? ` for ${r.feature}` : ''}.`,
   },
 ]

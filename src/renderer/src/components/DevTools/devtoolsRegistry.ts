@@ -1,5 +1,5 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
-import { FolderGit2, Github, FolderCog, TerminalSquare, Radio, KeyRound, type LucideIcon } from 'lucide-react'
+import { FolderGit2, Github, FolderCog, TerminalSquare, Radio, KeyRound, AlertTriangle, type LucideIcon } from 'lucide-react'
 
 export interface DevToolsSection {
   id: string
@@ -62,5 +62,14 @@ export const DEVTOOLS_SECTIONS: DevToolsSection[] = [
     labelJa: '倉庫',
     icon: Github,
     component: lazy(() => import('./views/GitHubView').then((m) => ({ default: m.GitHubView }))),
+  },
+  {
+    // Last deliberately: it is where you go when something else here
+    // misbehaved, not somewhere to start.
+    id: 'errors',
+    labelEn: 'Errors',
+    labelJa: '不具合',
+    icon: AlertTriangle,
+    component: lazy(() => import('./views/ErrorsView').then((m) => ({ default: m.ErrorsView }))),
   },
 ]

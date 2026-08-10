@@ -676,6 +676,55 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 12,
+    name: 'devtools-error-log',
+    // `capability_audit` records dispatches, which only sees a failure that
+    // propagates all the way out of a handler. The Dev Tools features fail
+    // *partially* far more often than they fail outright: a scan walks
+    // thousands of directories and hits a dozen EACCES, an organiser run
+    // executes 197 of 200 ops, a port probe times out on one port. Those never
+    // reach the dispatch boundary — execute.ts collects them into a local
+    // array that is returned and then dropped — so nothing durable remembers
+    // them. This is that record.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS devtools_errors (
+          id TEXT PRIMARY KEY,
+          feature TEXT NOT NULL
+            CHECK (feature IN ('scanner', 'localhost', 'shell', 'organizer', 'vault', 'github')),
+          /* The specific step, e.g. 'executeOp' — narrower than the feature so
+             a failing step is identifiable without reading the message. */
+          operation TEXT NOT NULL,
+          severity TEXT NOT NULL DEFAULT 'error'
+            CHECK (severity IN ('warning', 'error', 'fatal')),
+          message TEXT NOT NULL,
+          /* errno-style code where the platform gave one (EACCES, EXDEV). */
+          code TEXT,
+          /* What the failure was about: a path, a port, a command. */
+          subject TEXT,
+          context_json TEXT NOT NULL DEFAULT '{}',
+          stack TEXT,
+          /* Identical failures collapse onto one row and increment
+             occurrences. A scan denied on one protected tree would otherwise
+             write hundreds of rows that say the same thing and push every
+             other error out of the retention window. */
+          fingerprint TEXT NOT NULL,
+          occurrences INTEGER NOT NULL DEFAULT 1,
+          first_seen INTEGER NOT NULL,
+          last_seen INTEGER NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_devtools_errors_fingerprint
+          ON devtools_errors(fingerprint);
+        CREATE INDEX IF NOT EXISTS idx_devtools_errors_seen
+          ON devtools_errors(last_seen DESC);
+        CREATE INDEX IF NOT EXISTS idx_devtools_errors_feature
+          ON devtools_errors(feature, last_seen DESC);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

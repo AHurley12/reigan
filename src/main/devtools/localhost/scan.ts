@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getDatabase } from '../../db/database'
+import { recordDevToolsError } from '../errorLog'
 
 const execFileAsync = promisify(execFile)
 
@@ -132,8 +133,17 @@ async function listProcesses(pids: number[]): Promise<Map<number, RawProcess>> {
     for (const row of parseJsonArray<RawProcess>(out)) {
       map.set(row.ProcessId, row)
     }
-  } catch {
-    // Leaves entries with just a port and pid, which still renders.
+  } catch (err) {
+    // Leaves entries with just a port and pid, which still renders — so the
+    // panel looks merely unhelpful rather than broken, and nobody would think
+    // to report it. Logged as a warning for exactly that reason.
+    recordDevToolsError({
+      feature: 'localhost',
+      operation: 'enrichProcesses',
+      error: err,
+      severity: 'warning',
+      context: { consequence: 'ports listed without process name or path' },
+    })
   }
   return map
 }

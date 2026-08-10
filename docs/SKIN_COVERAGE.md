@@ -259,6 +259,7 @@ matches.
 | DevTools/views/OrganizerView | ⚡ sub-tab = organizer | `--accent-primary`, `--border`, `--border-accent`, `--bg-elevated`, `--status-good`, `--text-*` |
 | DevTools/views/VaultView | ⚡ sub-tab = vault | `--status-warning` (secret badge), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
 | DevTools/views/GitHubView | ⚡ sub-tab = github | `--text-secondary/muted` |
+| DevTools/views/ErrorsView | ⚡ sub-tab = errors | `--status-warning`/`--status-critical` (severity), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
 
 ### Notes
 
