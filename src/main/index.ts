@@ -19,6 +19,7 @@ import { getDecodedSetting } from './db/queries'
 import { migrateSecretsToSafeStorage } from './db/secrets'
 import { registerCapabilityHandlers } from './capabilities/ipc'
 import { registerAllCapabilities } from './capabilities/register'
+import { seedTemplates } from './devtools/vault/templates'
 import { initJobEngine } from './jobs'
 import { stopScheduler } from './jobs/scheduler'
 import {
@@ -156,6 +157,10 @@ if (!gotSingleInstanceLock) {
     // generic IPC surface the renderer and the agent both dispatch through.
     registerAllCapabilities()
     registerCapabilityHandlers(mainWindow)
+
+    // Idempotent: seeds the shipped config templates on first run only.
+    const seeded = seedTemplates()
+    if (seeded > 0) console.log(`[vault] seeded ${seeded} built-in config template(s)`)
 
     // Durable job engine. Started after the capability registry, since every job
     // dispatches through it. Boot catch-up runs here — see jobs/scheduler.ts.
