@@ -1,4 +1,4 @@
-import { getJobByName, upsertJob } from './store'
+import { getJobByName, setJobEnabled, upsertJob } from './store'
 import { nextOccurrence } from './schedule'
 
 /**
@@ -24,6 +24,23 @@ export function seedSystemJobs(): void {
     // this job replaces.
     runImmediately: true,
   })
+
+  ensure({
+    name: 'Sync YouTube channel',
+    capabilityId: 'youtube.sync',
+    scheduleKind: 'daily_at',
+    scheduleExpr: '05:00',
+    // Analytics are cumulative, so replaying missed days would fetch the same
+    // figures repeatedly and spend Data API quota to learn nothing new. One
+    // catch-up sync brings the cache fully current.
+    catchUpPolicy: 'run_once',
+    timeoutMs: 30 * 60_000,
+    // Left disabled until the user has connected a Google account with the
+    // YouTube scopes — an enabled job would otherwise fail nightly, exhaust its
+    // retry budget, and disable itself with a confusing error.
+    enabled: false,
+    disabledReason: 'Connect a Google account with YouTube access, then enable this job.',
+  })
 }
 
 function ensure(params: {
@@ -34,16 +51,27 @@ function ensure(params: {
   catchUpPolicy: 'run_once' | 'run_all' | 'skip'
   timeoutMs?: number
   runImmediately?: boolean
+  enabled?: boolean
+  disabledReason?: string
 }): void {
   if (getJobByName(params.name)) return
 
-  const { runImmediately, ...job } = params
-  upsertJob({
+  const { runImmediately, disabledReason, ...job } = params
+  const enabled = params.enabled ?? true
+
+  const created = upsertJob({
     ...job,
     system: true,
-    enabled: true,
-    nextRunAt: runImmediately
-      ? Date.now()
-      : nextOccurrence(params.scheduleKind, params.scheduleExpr, Date.now()),
+    enabled,
+    nextRunAt: !enabled
+      ? null
+      : runImmediately
+        ? Date.now()
+        : nextOccurrence(params.scheduleKind, params.scheduleExpr, Date.now()),
   })
+
+  // upsertJob has no disabled_reason parameter — it is written by the scheduler
+  // when a job disables itself. A seeded job that ships disabled needs to say
+  // why, or the Jobs view shows a dead row with no explanation.
+  if (!enabled && disabledReason) setJobEnabled(created.id, false, disabledReason)
 }

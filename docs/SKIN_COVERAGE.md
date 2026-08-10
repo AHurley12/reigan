@@ -202,3 +202,34 @@ skin exposed:
 | Cut | Why |
 | --- | --- |
 | Grass/leaf silhouette in the ambient layer | Built, rendered, looked at, deleted. The app's panels cover the bottom of the window edge to edge, so a band along the bottom of the ambient layer has no exposed real estate — behind 40% white and a 9px blur it produced nothing but a faint darkening. An invisible element that still costs a raster is worse than no element. |
+
+---
+
+## Automations tab (Phases 1–2)
+
+Every component added by the Automations build. All colour comes from tokens —
+no hex, no `rgb()`, no named colours. Verified by reading each file: the only
+literal colour-ish values are `transparent` inside `color-mix()` calls, which is
+a mixing operand rather than a colour choice.
+
+| Component | Tokens used | Notes |
+| --- | --- | --- |
+| `Automations/AutomationsPanel.tsx` | `--text-kanji`, `--text-muted` + `bg-tint`/`text-txt-*` utilities | Section rail and the not-yet-built placeholder |
+| `Automations/JobsView.tsx` | `--status-success`, `--status-processing`, `--status-error`, `--status-listening`, `--status-speaking`, `--text-primary/secondary/muted` | Status badges derive fill and border from one token via `color-mix()`, so a skin changing `--status-error` restyles every failure badge |
+| `Automations/YouTubeView.tsx` | `--accent-primary`, `--status-success`, `--status-speaking`, `--status-listening`, `--status-error`, `--bg-surface`, `--border`, `--text-*` | Quota meter turns `--status-error` at 80% of budget |
+| `Automations/Sparkline.tsx` | Accepts a colour prop, always passed a `var()` reference | Inline SVG rather than a chart library, specifically so the skin owns the palette |
+| `Approvals/ApprovalDialog.tsx` | `--bg-void` (scrim via `color-mix`), `--bg-surface`, `--border`, `--accent-primary`, `--status-error`, `--text-*` | Destructive risk swaps the accent for `--status-error` |
+
+### Divider discipline
+
+`ApprovalDialog`'s diff rows initially drew their own `borderTop`, which
+`globals.css` explicitly forbids — the app has exactly one divider and the theme
+decides what it looks like. Converted to the `.rule` class. The surrounding box
+uses `border-[var(--border)]`, which is a container edge rather than a division,
+matching the existing idiom in `TaskPanel`'s input.
+
+### Not yet audited
+
+Sections that are still placeholders (`content`, `assets`, `mail`, `digest`,
+`usage`, `social`) render through `AutomationsPanel`'s `ComingSoon`, which is
+tokenized. They will need their own rows here as they are built.

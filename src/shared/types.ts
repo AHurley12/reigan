@@ -365,3 +365,68 @@ export interface CapabilityInvokeResult<T = unknown> {
   errorCode?: string;
   awaitingApprovalId?: string;
 }
+
+// ── Automations: YouTube ──
+
+export interface YtChannelStats {
+  id: string;
+  title: string;
+  customUrl: string | null;
+  subscriberCount: number;
+  viewCount: number;
+  videoCount: number;
+  thumbnailUrl: string | null;
+  syncedAt: number | null;
+}
+
+export interface YtSeriesPoint {
+  date: string;
+  views: number;
+  watchTimeMinutes: number;
+  netSubs: number;
+}
+
+export type YtPerformanceTier = 'top' | 'solid' | 'underperforming' | 'dormant';
+
+export interface YtVideoSummary {
+  id: string;
+  title: string;
+  publishedAt: number | null;
+  durationS: number | null;
+  privacyStatus: string | null;
+  thumbnailUrl: string | null;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  tags: string[];
+  descriptionLength: number;
+  hasCustomThumbnail: boolean;
+  views28: number;
+  tier: YtPerformanceTier;
+}
+
+export type YtFindingKind =
+  | 'still_earning' | 'revival_thumbnail' | 'revival_content' | 'revival_remake'
+  | 'metadata_hygiene' | 'cadence' | 'title_pattern';
+
+export interface YtAuditFinding {
+  id: string;
+  kind: YtFindingKind;
+  videoId: string | null;
+  severity: 'info' | 'suggestion' | 'important';
+  title: string;
+  detail: string;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+  lowConfidence: boolean;
+  generatedAt: number;
+}
+
+export interface YtQuotaStatus {
+  date: string;
+  used: number;
+  budget: number;
+  limit: number;
+  remaining: number;
+  calls: Record<string, number>;
+}

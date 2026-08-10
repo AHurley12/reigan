@@ -1,6 +1,7 @@
 import React, { Suspense, useState } from 'react'
 import { SectionHeader } from '../shared/SectionHeader'
 import { JobsView } from './JobsView'
+import { YouTubeView } from './YouTubeView'
 
 /**
  * The Automations tab.
@@ -21,7 +22,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'jobs',    en: 'Jobs',      ja: '仕事',     romaji: 'shigoto', component: JobsView },
-  { id: 'youtube', en: 'YouTube',   ja: '動画',     romaji: 'douga' },
+  { id: 'youtube', en: 'YouTube',   ja: '動画',     romaji: 'douga',   component: YouTubeView },
   { id: 'content', en: 'Content',   ja: '制作',     romaji: 'seisaku' },
   { id: 'assets',  en: 'Assets',    ja: '素材',     romaji: 'sozai' },
   { id: 'mail',    en: 'Mail Rules',ja: '規則',     romaji: 'kisoku' },

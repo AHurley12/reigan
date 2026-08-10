@@ -111,6 +111,38 @@ dispatch refuses `uiOnly` under `invokedBy: 'job'`.
 | `tasks.complete` | write | |
 | `tasks.delete` | destructive | |
 
+### `youtube.*` — channel manager
+
+| id | Risk | Quota cost | Notes |
+| --- | --- | --- | --- |
+| `youtube.sync` | network | ~10 units full sync | Scheduled daily. Refuses to start if it would exceed the budget |
+| `youtube.getChannelStats` | read | 0 | Cache only |
+| `youtube.listVideos` | read | 0 | Cache only; filters by tier, date, metadata problems |
+| `youtube.getVideoAnalytics` | read | 0 | Cache only |
+| `youtube.auditCatalog` | read | 0 | Pure analysis over cached data |
+| `youtube.getQuota` | read | 0 | Today's consumption against budget |
+| `youtube.suggestMetadata` | read | 0 | **Context only** — the model writes the words |
+| `youtube.updateVideoMetadata` | write | 51 units | Before/after diff, approval required |
+
+**Quota discipline.** The Data API allows 10,000 units/day. Videos are enumerated
+through the uploads playlist (`playlistItems.list`, 1 unit per 50) and **never**
+through `search.list`, which costs 100 units per call — on a 200-video channel
+that is 4 units instead of 400+. `videos.list` is batched 50 ids at a time. All
+UI reads hit SQLite; sync is the only thing that touches the API. The ledger keys
+on the **Pacific** date, because that is when Google resets, and a sync that
+would exceed the configurable budget (default 8,000) is refused before it starts
+rather than dying half-populated.
+
+`youtube.updateVideoMetadata` re-reads the current snippet and merges before
+writing, because `videos.update` replaces the whole snippet — sending a title
+alone would silently wipe the description.
+
+**Division of labour on `suggestMetadata`.** The handler assembles context (the
+video's current metadata, its analytics, its traffic sources, the channel's
+top-performing titles, and any audit findings for it) and returns it. The model
+writes the title, description and tags, then calls `updateVideoMetadata`. There
+is no templating anywhere in this path.
+
 ### `files.*`
 
 | id | Risk | Notes |

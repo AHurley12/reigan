@@ -1,5 +1,6 @@
 import { Notification, type BrowserWindow } from 'electron'
 import { onQueuedApprovalGranted } from '../capabilities/ipc'
+import { setReauthNotifier } from '../auth/googleAuth'
 import { seedSystemJobs } from './seed'
 import { resumeApprovedRun, setJobNotifier, startScheduler } from './scheduler'
 import { findRunByApprovalId } from './store'
@@ -17,6 +18,24 @@ export const JOB_NOTIFICATION_CHANNEL = 'jobs:notification'
  */
 export function initJobEngine(win: BrowserWindow): void {
   seedSystemJobs()
+
+  // The OAuth client is in Testing status, where Google expires refresh tokens
+  // after 7 days. Routing every invalid_grant through one notifier means the
+  // weekly death reads as "reconnect your Google account" rather than as a
+  // string of unrelated failures across YouTube, Mail and Calendar.
+  setReauthNotifier((message) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(JOB_NOTIFICATION_CHANNEL, {
+        priority: 'urgent',
+        title: 'Google sign-in expired',
+        body: message,
+        jobId: '',
+      })
+    }
+    if (Notification.isSupported()) {
+      new Notification({ title: 'Google sign-in expired', body: message }).show()
+    }
+  })
 
   setJobNotifier((event) => {
     if (!win.isDestroyed()) {

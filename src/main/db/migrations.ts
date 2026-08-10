@@ -245,6 +245,108 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 5,
+    name: 'youtube-channel-manager',
+    // Everything the UI reads comes from these tables, never from a live API
+    // call: the Data API allows 10,000 units a day and a single careless
+    // `search.list` costs 100 of them. Sync writes here; the UI reads here.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS yt_channel (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL DEFAULT '',
+          custom_url TEXT,
+          subscriber_count INTEGER NOT NULL DEFAULT 0,
+          view_count INTEGER NOT NULL DEFAULT 0,
+          video_count INTEGER NOT NULL DEFAULT 0,
+          thumbnail_url TEXT,
+          uploads_playlist_id TEXT,
+          synced_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS yt_videos (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL DEFAULT '',
+          description TEXT,
+          published_at INTEGER,
+          duration_s INTEGER,
+          privacy_status TEXT,
+          thumbnail_url TEXT,
+          /* True only when the channel never uploaded a custom thumbnail — a
+             metadata-hygiene signal, not a display concern. */
+          has_custom_thumbnail INTEGER NOT NULL DEFAULT 1,
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          category_id TEXT,
+          view_count INTEGER NOT NULL DEFAULT 0,
+          like_count INTEGER NOT NULL DEFAULT 0,
+          comment_count INTEGER NOT NULL DEFAULT 0,
+          synced_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_yt_videos_published ON yt_videos(published_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_yt_videos_views ON yt_videos(view_count DESC);
+
+        /* The foundation for every insight in the catalog audit. Synced for at
+           least 365 days on first run, incrementally thereafter. */
+        CREATE TABLE IF NOT EXISTS yt_daily_stats (
+          video_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          views INTEGER NOT NULL DEFAULT 0,
+          watch_time_minutes REAL NOT NULL DEFAULT 0,
+          avg_view_duration_s REAL NOT NULL DEFAULT 0,
+          avg_view_percentage REAL NOT NULL DEFAULT 0,
+          subs_gained INTEGER NOT NULL DEFAULT 0,
+          subs_lost INTEGER NOT NULL DEFAULT 0,
+          impressions INTEGER NOT NULL DEFAULT 0,
+          ctr REAL NOT NULL DEFAULT 0,
+          PRIMARY KEY (video_id, date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_yt_daily_date ON yt_daily_stats(date);
+
+        CREATE TABLE IF NOT EXISTS yt_traffic_sources (
+          video_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          source_type TEXT NOT NULL,
+          views INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (video_id, date, source_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_yt_traffic_video ON yt_traffic_sources(video_id);
+
+        /* One row per quota day (Pacific). calls_json breaks the total down by
+           endpoint so an unexpected spike can be traced to whatever caused it. */
+        CREATE TABLE IF NOT EXISTS yt_quota_usage (
+          date TEXT PRIMARY KEY,
+          units_consumed INTEGER NOT NULL DEFAULT 0,
+          calls_json TEXT NOT NULL DEFAULT '{}'
+        );
+
+        /* Audit findings are persisted rather than recomputed on every view:
+           they are the input to "create a task from this", and a finding whose
+           id changed between renders could not be actioned. */
+        CREATE TABLE IF NOT EXISTS yt_audit_findings (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,
+          video_id TEXT,
+          severity TEXT NOT NULL DEFAULT 'info',
+          title TEXT NOT NULL,
+          detail TEXT NOT NULL,
+          evidence_json TEXT NOT NULL DEFAULT '{}',
+          recommendation TEXT NOT NULL,
+          /* Set when the sample behind a finding is too small to trust. */
+          low_confidence INTEGER NOT NULL DEFAULT 0,
+          generated_at INTEGER NOT NULL,
+          dismissed_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_yt_findings_kind ON yt_audit_findings(kind);
+        CREATE INDEX IF NOT EXISTS idx_yt_findings_generated ON yt_audit_findings(generated_at DESC);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

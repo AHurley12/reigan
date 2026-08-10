@@ -11,3 +11,6 @@ out/
 # bloat, and two of the three are near GitHub per-file limits. Set up Git LFS
 # if these need to be versioned.
 src/renderer/public/models/
+
+# Agent worktrees are separate checkouts of this repo — never a submodule of it.
+.claude/worktrees/
