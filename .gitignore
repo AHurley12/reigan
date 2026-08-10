@@ -11,3 +11,6 @@ out/
 # bloat, and two of the three are near GitHub per-file limits. Set up Git LFS
 # if these need to be versioned.
 src/renderer/public/models/
+
+# Isolated Electron profile for dev runs — keeps test migrations out of the real DB.
+.devdata/
