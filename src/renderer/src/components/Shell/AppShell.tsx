@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react'
+import React, { Suspense, lazy, useRef, useCallback } from 'react'
 import { TitleBar } from './TitleBar'
 import { NavBar } from '../Nav/NavBar'
 import { ChatPanel } from '../Chat/ChatPanel'
@@ -16,9 +16,16 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
 
+/**
+ * Lazy: the Dev Tools tree (six views plus its virtual list) must not join the
+ * renderer's single 2.5MB startup chunk, which already dominates cold start.
+ */
+const DevToolsPanel = lazy(() =>
+  import('../DevTools/DevToolsPanel').then((m) => ({ default: m.DevToolsPanel }))
+)
+
 const PLACEHOLDER_MODULES: Partial<Record<AppModule, { en: string; ja: string; romaji: string }>> = {
   automations: { en: 'Automations', ja: '自動化',     romaji: 'jidouka' },
-  dev:         { en: 'Dev Tools',   ja: '開発',       romaji: 'kaihatsu' },
 }
 
 function PlaceholderModule({ module }: { module: AppModule }) {
@@ -74,6 +81,12 @@ export function AppShell() {
         return <PerformancePanel />
       case 'automations':
         return <AutomationsPanel />
+      case 'dev':
+        return (
+          <Suspense fallback={<div className="h-full" />}>
+            <DevToolsPanel />
+          </Suspense>
+        )
       default:
         return <PlaceholderModule module={activeModule} />
     }

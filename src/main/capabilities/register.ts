@@ -3,6 +3,11 @@ import { taskCapabilities } from './defs/tasks'
 import { jobCapabilities } from './defs/jobs'
 import { fileCapabilities } from './defs/files'
 import { youtubeCapabilities } from './defs/youtube'
+import { devtoolsCapabilities } from './defs/devtools'
+import { localhostCapabilities } from './defs/localhost'
+import { shellCapabilities } from './defs/shell'
+import { fileorgCapabilities } from './defs/fileorg'
+import { vaultCapabilities } from './defs/vault'
 
 /**
  * The one place every capability module is pulled in.
@@ -15,8 +20,12 @@ export function registerAllCapabilities(): void {
   registerCapabilities(taskCapabilities)
   registerCapabilities(fileCapabilities)
   registerCapabilities(youtubeCapabilities)
+  registerCapabilities(devtoolsCapabilities)
+  registerCapabilities(localhostCapabilities)
+  registerCapabilities(shellCapabilities)
+  registerCapabilities(fileorgCapabilities)
+  registerCapabilities(vaultCapabilities)
   // Registered after everything schedulable: jobs.upsert validates that its
   // target capability exists, so the targets must be present first.
   registerCapabilities(jobCapabilities)
-  // Phase 2 adds youtube.*, Phase 3 content.*, and so on.
 }

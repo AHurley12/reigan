@@ -325,3 +325,36 @@ The 2,497 kB single renderer chunk is the reason Phase 8's lazy mounting is a
 correctness requirement and not a nicety: statically importing the Dev Tools
 tree into that chunk would spend the entire 200 ms budget before any Dev Tools
 code runs. The module registry in section 5 uses `React.lazy` for this reason.
+
+---
+
+## Addendum — what happened to each defect
+
+Recorded after the Dev Tools build. This audit itself is a Phase 0 snapshot
+and has not been rewritten; this is the disposition.
+
+| | Defect | Status |
+| --- | --- | --- |
+| D1 | Secrets plaintext at rest **and** in the renderer | **Fixed, in two halves.** The Automations branch added `safeStorage` encryption at rest (`db/secrets.ts`). That left the renderer half open — `SETTINGS_LOAD_ALL` still *decrypted* credentials on their way to the window. Now blanked, with a separate `{hasValue,last4}` preview, and `SETTINGS_GET` refuses secret keys so the bulk blanking cannot be sidestepped one key at a time. |
+| D2 | No migration system | **Fixed** by the Automations branch: forward-only numbered migrations, contiguity asserted at boot, each in its own transaction with the `user_version` bump. Migration 1 adopts the pre-existing schema byte-for-byte. |
+| D3 | `schema.sql` duplicated behind a silent catch | **Fixed** — `schema.sql` and `runInlineSchema()` are both gone. |
+| D4 | No validation boundary on IPC | **Fixed for capabilities.** Every capability validates with zod in main before its handler runs, on both the UI and agent paths. Handlers predating the registry (`ipc/*.ts`) are unchanged. |
+| D5 | `sandbox: false` | **Deliberately not touched.** Flipping it risks the voice pipeline for no Dev Tools benefit. Still open. |
+| D6 | No audit log | **Fixed** — `capability_audit`, written from a single wrapper inside `invokeCapability` so no return path can skip it. Covers capabilities only; the older LangChain tools remain unaudited. |
+| D7 | Unstructured tool results | **Fixed for capabilities** — `{ok,result}` / `{ok,error,errorCode}`, no exception crossing IPC. |
+| D8 | `maxIterations: 5` | **Still open.** Not raised; the agent executor was left alone to avoid a merge conflict with the concurrent branch. Worth revisiting — it is low for multi-step Dev Tools work. |
+| D9 | Hardcoded model id | **Still open**, out of scope. |
+
+### Cold start, re-measured
+
+| | Warm median |
+| --- | --- |
+| Baseline (commit `495cbb7`, before either build) | 1834 ms |
+| After Dev Tools (8 warm samples) | **1996 ms** — +162 ms |
+
+Inside the 200 ms budget, but the comparison is not attributable to Dev Tools
+alone: the "after" build also contains the Automations branch's capability
+registry, approval framework and job scheduler, which boot before the window
+shows. The Dev Tools contribution to the renderer bundle is measurable and
+small — the startup chunk grew 23 KB (from the settings changes), with the six
+views split into ~81 KB of lazily-loaded chunks.

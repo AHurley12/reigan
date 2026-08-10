@@ -57,6 +57,22 @@ export interface CapabilityDef<TArgs = unknown, TResult = unknown> {
   risk: RiskTier
 
   /**
+   * Recomputes the risk tier from the actual arguments.
+   *
+   * Exists for one shape that a static tier cannot express: `shell.run` is
+   * read-only for `git status` and destructive for everything else, and the
+   * difference is only knowable once the command has been parsed. Without
+   * this, the capability would have to run its own approval prompt inside its
+   * handler — which is precisely the "approval decided at the call site"
+   * pattern the registry exists to abolish.
+   *
+   * The declared `risk` remains the honest worst case and is what the
+   * capability list and the model's tool description show; this can only be
+   * consulted to pick a tier for one specific invocation.
+   */
+  dynamicRisk?: (args: TArgs) => RiskTier
+
+  /**
    * Excludes this capability from the generated tool schema, so the model cannot
    * see or call it. The enforcement point for Phase 7's privacy guarantee:
    * `usage.getSessions` returns raw window titles and must never be reachable by

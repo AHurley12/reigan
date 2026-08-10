@@ -44,6 +44,7 @@ const api = {
   getSetting: (key: string) => ipcRenderer.invoke(IPC.SETTINGS_GET, key),
   setSetting: (key: string, value: string) => ipcRenderer.invoke(IPC.SETTINGS_SET, key, value),
   getAllSettings: () => ipcRenderer.invoke(IPC.SETTINGS_LOAD_ALL),
+  getSecretPreviews: () => ipcRenderer.invoke(IPC.SETTINGS_SECRET_PREVIEWS),
 
   // System
   getSystemInfo: () => ipcRenderer.invoke(IPC.SYSTEM_INFO),

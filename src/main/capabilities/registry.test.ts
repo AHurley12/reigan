@@ -14,6 +14,19 @@ vi.mock('./approval', () => ({
 }))
 import { requestApproval } from './approval'
 
+// The "require approval for everything" switch is read from settings at
+// dispatch. Mocked so these tests state which side of it they are exercising
+// rather than inheriting whatever the developer's own database says.
+vi.mock('../db/queries', () => ({
+  getDecodedSetting: vi.fn(() => null),
+}))
+import { getDecodedSetting } from '../db/queries'
+
+/** Turns the global override off, restoring "a UI click is the approval". */
+function trustUiClicks(): void {
+  vi.mocked(getDecodedSetting).mockReturnValue('false')
+}
+
 const noop = { schema: z.object({}), handler: () => 'ok' }
 
 function def(overrides: Partial<AnyCapability>): AnyCapability {
@@ -31,6 +44,9 @@ beforeEach(() => {
   clearRegistry()
   vi.mocked(requestApproval).mockClear()
   vi.mocked(requestApproval).mockResolvedValue({ status: 'approved' })
+  // Unset, which the dispatcher must read as "on" — a security default that
+  // only takes effect once someone visits Settings is not a default.
+  vi.mocked(getDecodedSetting).mockReturnValue(null)
 })
 
 describe('registration rules', () => {
@@ -144,7 +160,8 @@ describe('approval enforcement by tier', () => {
     expect(r.ok).toBe(true)
   })
 
-  it('does not prompt when the user invoked it from the UI', async () => {
+  it('does not prompt for a UI invocation once the global override is off', async () => {
+    trustUiClicks()
     registerCapability(writeCap)
     const r = await invokeCapability('test.mutate', {}, { invokedBy: 'ui' })
 
@@ -152,6 +169,74 @@ describe('approval enforcement by tier', () => {
     // without reading, which is what breaks the agent case.
     expect(requestApproval).not.toHaveBeenCalled()
     expect(r.ok).toBe(true)
+  })
+
+  /**
+   * The default. Dispatch cannot distinguish "the user pressed Save on a
+   * one-line edit" from "the user pressed Execute on a plan spanning 400
+   * files" — only the risk tier can, and it calls both write-or-worse. So the
+   * organiser and the shell get a second look unless the user opts out.
+   */
+  it('prompts for a UI invocation by default', async () => {
+    registerCapability(writeCap)
+    const r = await invokeCapability('test.mutate', {}, { invokedBy: 'ui' })
+
+    expect(requestApproval).toHaveBeenCalledOnce()
+    expect(r.ok).toBe(true)
+  })
+
+  describe('dynamicRisk', () => {
+    const dynamic = (): AnyCapability =>
+      def({
+        id: 'test.dynamic',
+        risk: 'destructive',
+        schema: z.object({ safe: z.boolean() }),
+        dynamicRisk: (args: { safe: boolean }) => (args.safe ? 'read' : 'destructive'),
+        approval: { summary: () => 'Do the risky thing' },
+        handler: () => 'done',
+      })
+
+    it('skips the prompt when the arguments narrow the tier to read', async () => {
+      registerCapability(dynamic())
+      const r = await invokeCapability('test.dynamic', { safe: true }, { invokedBy: 'agent' })
+
+      expect(requestApproval).not.toHaveBeenCalled()
+      expect(r.ok).toBe(true)
+    })
+
+    it('still prompts when the arguments keep it destructive', async () => {
+      registerCapability(dynamic())
+      await invokeCapability('test.dynamic', { safe: false }, { invokedBy: 'agent' })
+
+      expect(requestApproval).toHaveBeenCalledOnce()
+    })
+
+    it('falls back to the declared tier if the risk function throws', async () => {
+      registerCapability(
+        def({
+          id: 'test.throws',
+          risk: 'destructive',
+          dynamicRisk: () => {
+            throw new Error('bad parse')
+          },
+          approval: { summary: () => 'x' },
+          handler: () => 'done',
+        })
+      )
+      await invokeCapability('test.throws', {}, { invokedBy: 'agent' })
+
+      // Failing open here would let a bug in a classifier silently disable
+      // the prompt, which is the one direction this must never fail in.
+      expect(requestApproval).toHaveBeenCalledOnce()
+    })
+
+    it('requires an approval spec even when the static tier is read', () => {
+      expect(() =>
+        registerCapability(
+          def({ id: 'test.noSpec', risk: 'read', dynamicRisk: () => 'destructive' })
+        )
+      ).toThrow(/approval spec/)
+    })
   })
 
   it('never prompts for a read capability', async () => {
