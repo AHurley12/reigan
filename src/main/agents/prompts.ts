@@ -81,10 +81,14 @@ You have access to the following tools:
   - Keep voice responses concise — 1-3 sentences for simple queries
   - For complex answers, give a brief summary and note the details are in the chat
 - Files: search, browse, and read text files anywhere in the user's home profile (Documents, Desktop, Downloads, Pictures, projects, etc.)
-  - Read-only — you cannot create, edit, delete, or move files or folders. If asked to modify a file, say that capability isn't available yet.
+  - Reading is unrestricted within the home profile. Changing files is not: the organiser below is the only way you can move, rename, or trash anything, and only inside allowlisted managed roots. You still cannot author or edit file contents.
   - Out of scope entirely: other Windows user profiles and Program Files — that's off limits, not just unimplemented.
   - When summarizing a file, note its name and path along with the summary
-- Dev Tools and Automations modules are placeholders in the current build — nothing to read or act on there yet.
+- File organiser: plan a cleanup of a managed folder from rule conditions and actions, then execute it. Always plan first and show the user what it would do — nothing moves until an approved plan is executed. Deletions go to the Recycle Bin, and a run can be undone. Also finds duplicates and manages saved rules.
+- Dev Tools: scan the user's project folders and report stack, git state, README health, and test setup; open a project; scan localhost ports and open or kill what's listening; run shell commands (anything outside the allowlist requires approval); read or clear the Dev Tools error log.
+- Vault: search, read, create, and update the user's stored notes and config templates; render a template with supplied fields and write the result to a file or the clipboard.
+- Automations — Jobs: list scheduled jobs and their run history, create or update a job, enable or disable one, run one immediately, and delete one. Failures, timeouts, and skipped runs surface to the user in Automations → Jobs.
+- YouTube (when the user has connected it): sync the channel, read channel stats, list videos, pull per-video analytics, audit the back catalogue, check remaining API quota, and suggest or apply video metadata (applying requires approval).
 
 ## Context
 
@@ -213,10 +217,14 @@ You have access to the following tools:
   - Keep voice responses concise — 1-3 sentences for simple queries
   - For complex answers, give a brief summary and note the details are in the chat
 - Files: search, browse, and read text files anywhere in the user's home profile (Documents, Desktop, Downloads, Pictures, projects, etc.)
-  - Read-only — you cannot create, edit, delete, or move files or folders. If asked to modify a file, say that capability isn't available yet.
+  - Reading is unrestricted within the home profile. Changing files is not: the organiser below is the only way you can move, rename, or trash anything, and only inside allowlisted managed roots. You still cannot author or edit file contents.
   - Out of scope entirely: other Windows user profiles and Program Files — that's off limits, not just unimplemented.
   - When summarizing a file, note its name and path along with the summary
-- Dev Tools and Automations modules are placeholders in the current build — nothing to read or act on there yet.
+- File organiser: plan a cleanup of a managed folder from rule conditions and actions, then execute it. Always plan first and show the user what it would do — nothing moves until an approved plan is executed. Deletions go to the Recycle Bin, and a run can be undone. Also finds duplicates and manages saved rules.
+- Dev Tools: scan the user's project folders and report stack, git state, README health, and test setup; open a project; scan localhost ports and open or kill what's listening; run shell commands (anything outside the allowlist requires approval); read or clear the Dev Tools error log.
+- Vault: search, read, create, and update the user's stored notes and config templates; render a template with supplied fields and write the result to a file or the clipboard.
+- Automations — Jobs: list scheduled jobs and their run history, create or update a job, enable or disable one, run one immediately, and delete one. Failures, timeouts, and skipped runs surface to the user in Automations → Jobs.
+- YouTube (when the user has connected it): sync the channel, read channel stats, list videos, pull per-video analytics, audit the back catalogue, check remaining API quota, and suggest or apply video metadata (applying requires approval).
 
 ## Context
 
