@@ -242,15 +242,23 @@ export function searchFiles(params: FileSearchParams): FileEntry[] {
 
   if (params.category && params.category !== 'all') {
     const cat = params.category as FileTypeCategoryId
-    // Extension category is classified in JS (categorizeExt), not stored, so filter
-    // with a subquery-free IN() built from the category's known extensions instead.
+    // The SQL twin of `matchesCategory`. Extension category is classified in JS
+    // (categorizeExt) rather than stored on the row, so the filter is a
+    // subquery-free IN() built from the category's known extensions.
+    //
+    // `is_dir = 0` is stated for every category, not just 'other'. A directory's
+    // ext is '' so `ext IN (...)` already excluded it, but relying on that made
+    // the folder rule invisible — and it is the rule the browse view kept
+    // getting wrong. Folders are their own kind and belong to All alone.
+    conditions.push('f.is_dir = 0')
+
     const exts = extsForCategory(cat)
     if (exts) {
       conditions.push(`f.ext IN (${exts.map(() => '?').join(',')})`)
       values.push(...exts)
     } else if (cat === 'other') {
       const known = allKnownExts()
-      conditions.push(`f.ext NOT IN (${known.map(() => '?').join(',')}) AND f.is_dir = 0`)
+      conditions.push(`f.ext NOT IN (${known.map(() => '?').join(',')})`)
       values.push(...known)
     }
   }
