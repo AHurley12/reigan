@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { NavItem } from './NavItem'
 import { useAppStore } from '../../stores/appStore'
+import { useJobAlertStore } from '../../stores/jobAlertStore'
 import { NAV_ITEMS } from '../../../../shared/constants'
 import type { AppModule } from '../../../../shared/types'
 
@@ -21,6 +22,12 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 
 export function NavBar() {
   const { activeModule, setActiveModule, settingsOpen, setSettingsOpen } = useAppStore()
+  // The last mile of job reporting. An alert is captured at the shell whatever
+  // tab is open and kept in a standing banner in Automations → Jobs, but until
+  // something marked the rail there was nothing to tell a user looking at Chat
+  // that the banner was there at all — a 04:00 failure stayed invisible until
+  // they happened to open the tab.
+  const unseenAlerts = useJobAlertStore((s) => s.unseen)
 
   return (
     <div
@@ -46,6 +53,8 @@ export function NavBar() {
             isActive={activeModule === item.id}
             onClick={() => setActiveModule(item.id as AppModule)}
             shortcut={`Ctrl+${i + 1}`}
+            badge={item.id === 'automations' ? unseenAlerts : 0}
+            badgeLabel="unseen alerts"
           />
         ))}
       </div>

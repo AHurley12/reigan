@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type FileSearchParams } from '../shared/types'
+import { IPC, type FileSearchParams, type JobNotification } from '../shared/types'
 import { authBridge } from './authBridge'
 
 // Main reads the persisted theme synchronously (better-sqlite3) before creating
@@ -161,6 +161,18 @@ const api = {
         callback(data)
       ipcRenderer.on('capability:progress', handler)
       return () => ipcRenderer.removeListener('capability:progress', handler)
+    },
+  },
+
+  // Jobs — every non-success outcome the scheduler produces. Main has been
+  // sending on this channel since the job engine landed, but nothing bridged it,
+  // so in-app job alerts (including "automation disabled") were dropped on the
+  // floor and only the urgent ones ever surfaced, as OS toasts.
+  jobs: {
+    onNotification: (callback: (event: JobNotification) => void) => {
+      const handler = (_: unknown, event: JobNotification) => callback(event)
+      ipcRenderer.on(IPC.JOBS_NOTIFICATION, handler)
+      return () => ipcRenderer.removeListener(IPC.JOBS_NOTIFICATION, handler)
     },
   },
 

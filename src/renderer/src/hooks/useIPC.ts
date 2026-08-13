@@ -54,6 +54,11 @@ declare global {
         open: (filePath: string) => Promise<{ opened: boolean }>
         reveal: (filePath: string) => Promise<{ revealed: boolean }>
       }
+      jobs: {
+        onNotification: (
+          callback: (event: import('../../../shared/types').JobNotification) => void
+        ) => () => void
+      }
       perf: {
         staticInfo: () => Promise<import('../../../shared/types').PerfStaticInfo>
         start: () => Promise<{ started: boolean }>

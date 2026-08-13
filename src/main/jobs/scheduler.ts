@@ -17,6 +17,8 @@ import {
   type TriggeredBy,
 } from './store'
 import { missedOccurrences, nextOccurrence, MAX_CATCH_UP_OCCURRENCES } from './schedule'
+import { randomUUID } from 'crypto'
+import type { JobAlertKind, JobNotification } from '../../shared/types'
 
 /**
  * The durable job engine.
@@ -37,12 +39,7 @@ const RETRY_BASE_MS = 30_000
 const RETRY_CAP_MS = 60 * 60_000
 const RETRY_JITTER = 0.2
 
-export type JobNotifier = (event: {
-  priority: 'urgent' | 'normal'
-  title: string
-  body: string
-  jobId: string
-}) => void
+export type JobNotifier = (event: JobNotification) => void
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let started = false
@@ -56,6 +53,39 @@ export function setJobNotifier(fn: JobNotifier): void {
   notifier = fn
 }
 
+/**
+ * The single exit through which every non-success outcome leaves the scheduler.
+ *
+ * Funnelled through one function on purpose. When notification was open-coded at
+ * two call sites, the other six outcomes — skipped, deferred, timed out, failed
+ * with retries left, cancelled by a crash, degraded — were written to the run
+ * table and never spoken about. A run row nobody opens is not transparency, so
+ * the rule is now: if it is not a clean success, it is announced.
+ */
+function notify(params: {
+  kind: JobAlertKind
+  priority?: 'urgent' | 'normal'
+  title: string
+  body: string
+  jobId?: string
+  jobName?: string
+}): void {
+  const event: JobNotification = {
+    id: randomUUID(),
+    // Urgent breaks through to the OS. Anything that stops work happening for
+    // good is urgent; anything self-correcting is not.
+    priority: params.priority ?? 'normal',
+    kind: params.kind,
+    title: params.title,
+    body: params.body,
+    jobId: params.jobId ?? '',
+    jobName: params.jobName ?? 'Automations',
+    at: Date.now(),
+  }
+  console.warn(`[jobs] ${event.kind}: ${event.title} — ${event.body}`)
+  notifier?.(event)
+}
+
 export function startScheduler(): void {
   if (started) return
   started = true
@@ -64,7 +94,15 @@ export function startScheduler(): void {
   // overlap check believe those jobs are permanently in flight, and they would
   // never run again.
   const orphaned = reconcileOrphanedRuns()
-  if (orphaned > 0) console.log(`[jobs] reconciled ${orphaned} interrupted run(s)`)
+  if (orphaned > 0) {
+    // A run that died with the app produced no result and no error of its own.
+    // Without this the only trace is a `cancelled` row nobody thinks to look at.
+    notify({
+      kind: 'cancelled',
+      title: 'Interrupted automation runs',
+      body: `${orphaned} automation run(s) were cut short when the app last closed. They did not complete, and will run again at their next scheduled time.`,
+    })
+  }
 
   pruneOldRuns()
 
@@ -131,14 +169,15 @@ export function runBootCatchUp(now = Date.now()): void {
 
     switch (job.catchUpPolicy) {
       case 'skip': {
+        const body = `Missed ${missedCount} scheduled run(s) while the app was closed — skipped per its catch-up policy. Nothing was run to make up for them.`
         recordInstantRun({
           jobId: job.id,
           status: 'skipped',
           triggeredBy: 'catch_up',
           scheduledFor: job.nextRunAt,
-          error: `Missed ${missedCount} scheduled run(s) while the app was closed — skipped per catch-up policy.`,
+          error: body,
         })
-        console.log(`[jobs] ${job.name}: skipped ${missedCount} missed run(s)`)
+        notify({ kind: 'skipped', title: `Skipped: ${job.name}`, body, jobId: job.id, jobName: job.name })
         setNextRun(job.id, nextOccurrence(job.scheduleKind, job.scheduleExpr, now))
         break
       }
@@ -148,14 +187,22 @@ export function runBootCatchUp(now = Date.now()): void {
           `[jobs] ${job.name}: replaying ${missedCount} missed run(s)${truncated ? ` (capped at ${MAX_CATCH_UP_OCCURRENCES})` : ''}`
         )
         if (truncated) {
+          const body =
+            `More than ${MAX_CATCH_UP_OCCURRENCES} runs were missed; replaying the most recent ` +
+            `${MAX_CATCH_UP_OCCURRENCES} and dropping the rest.`
           recordInstantRun({
             jobId: job.id,
             status: 'skipped',
             triggeredBy: 'catch_up',
             scheduledFor: job.nextRunAt,
-            error:
-              `More than ${MAX_CATCH_UP_OCCURRENCES} runs were missed; replaying the most recent ` +
-              `${MAX_CATCH_UP_OCCURRENCES} and dropping the rest.`,
+            error: body,
+          })
+          notify({
+            kind: 'skipped',
+            title: `Dropped runs: ${job.name}`,
+            body,
+            jobId: job.id,
+            jobName: job.name,
           })
         }
         // Sequential by design — `void` here would fire them all at once and
@@ -232,13 +279,15 @@ async function executeJob(
 ): Promise<{ ok: boolean; message: string }> {
   // ── Concurrency: one run per job, ever ──
   if (running.has(job.id)) {
+    const body = 'Previous run still in progress — this occurrence was skipped and will not be made up.'
     recordInstantRun({
       jobId: job.id,
       status: 'skipped',
       triggeredBy,
       scheduledFor,
-      error: 'Previous run still in progress — this occurrence was skipped.',
+      error: body,
     })
+    notify({ kind: 'skipped', title: `Skipped: ${job.name}`, body, jobId: job.id, jobName: job.name })
     // Deliberately not queued: a job slower than its own interval would build an
     // unbounded backlog it could never work through.
     advanceSchedule(job)
@@ -255,13 +304,15 @@ async function executeJob(
 
   // ── Network awareness: defer, never fail ──
   if (capability.risk === 'network' && !isOnline()) {
+    const body = 'Offline — deferred rather than failed. Will try again in about 5 minutes.'
     recordInstantRun({
       jobId: job.id,
       status: 'deferred',
       triggeredBy,
       scheduledFor,
-      error: 'Offline — deferred rather than failed. Will retry shortly.',
+      error: body,
     })
+    notify({ kind: 'deferred', title: `Deferred: ${job.name}`, body, jobId: job.id, jobName: job.name })
     // Short retry rather than the next scheduled occurrence: a daily sync that
     // finds you offline at 3am should not wait another 24 hours.
     setNextRun(job.id, Date.now() + 5 * 60_000)
@@ -283,9 +334,31 @@ async function executeJob(
     })
 
     if (result.ok) {
-      finishRun({ runId, status: 'success', result: result.result })
+      // A capability may report that it succeeded *badly* — a truncated index, a
+      // sync that skipped half its items. That is not a failure, but it must not
+      // hide behind a green check either.
+      let warning: string | null = null
+      try {
+        warning = capability.resultWarning?.(result.result) ?? null
+      } catch {
+        // A broken warning hook must not turn a good run into a failed one.
+        warning = null
+      }
+
+      finishRun({ runId, status: 'success', result: result.result, error: warning })
       recordJobOutcome(job.id, 'success', Date.now(), 0)
       advanceSchedule(job)
+
+      if (warning) {
+        notify({
+          kind: 'degraded',
+          title: `Completed with problems: ${job.name}`,
+          body: warning,
+          jobId: job.id,
+          jobName: job.name,
+        })
+        return { ok: true, message: `"${job.name}" completed with problems: ${warning}` }
+      }
       return { ok: true, message: `"${job.name}" completed.` }
     }
 
@@ -300,11 +373,12 @@ async function executeJob(
       })
       recordJobOutcome(job.id, 'awaiting_approval', Date.now(), 0)
       advanceSchedule(job)
-      notifier?.({
-        priority: 'normal',
-        title: 'Approval needed',
+      notify({
+        kind: 'awaiting_approval',
+        title: `Approval needed: ${job.name}`,
         body: result.error ?? `"${job.name}" is waiting for your approval.`,
         jobId: job.id,
+        jobName: job.name,
       })
       return { ok: false, message: result.error ?? 'Awaiting approval.' }
     }
@@ -326,23 +400,36 @@ function handleFailure(
   signal: AbortSignal
 ): { ok: boolean; message: string } {
   const timedOut = signal.aborted
+  const detail = timedOut
+    ? `Timed out after ${Math.round(job.timeoutMs / 1000)}s. ${error}`
+    : error
   finishRun({
     runId,
     status: timedOut ? 'timeout' : 'failure',
-    error: timedOut ? `Timed out after ${job.timeoutMs}ms. ${error}` : error,
+    error: detail,
   })
   recordJobOutcome(job.id, timedOut ? 'timeout' : 'failure', Date.now(), attempt)
 
   if (attempt > job.maxRetries) {
     // Disabling is the point. A job that fails forever in silence is the worst
     // outcome available — worse than one that stops and says so.
-    const reason = `Failed ${attempt} time(s) in a row. Last error: ${error}`
+    const reason = `Failed ${attempt} time(s) in a row. Last error: ${detail}`
     disableJob(job, reason)
     return { ok: false, message: reason }
   }
 
   const delay = backoffDelay(attempt)
   setNextRun(job.id, Date.now() + delay)
+  // Announced even though a retry is coming. A job that fails three times before
+  // recovering was still broken for an hour, and the user is entitled to know
+  // that happened rather than discovering it only if the last attempt also dies.
+  notify({
+    kind: timedOut ? 'timeout' : 'failure',
+    title: `${timedOut ? 'Timed out' : 'Failed'}: ${job.name}`,
+    body: `${detail} Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt} of ${job.maxRetries + 1}).`,
+    jobId: job.id,
+    jobName: job.name,
+  })
   return {
     ok: false,
     message: `"${job.name}" failed (attempt ${attempt}/${job.maxRetries + 1}); retrying in ${Math.round(delay / 1000)}s.`,
@@ -352,13 +439,15 @@ function handleFailure(
 function disableJob(job: Job, reason: string): void {
   setJobEnabled(job.id, false, reason)
   setNextRun(job.id, null)
-  notifier?.({
+  // Urgent: this one has stopped for good and will not fix itself.
+  notify({
+    kind: 'disabled',
     priority: 'urgent',
     title: `Automation disabled: ${job.name}`,
-    body: reason,
+    body: `${reason} It will not run again until you re-enable it in Automations → Jobs.`,
     jobId: job.id,
+    jobName: job.name,
   })
-  console.error(`[jobs] ${job.name} disabled — ${reason}`)
 }
 
 /**

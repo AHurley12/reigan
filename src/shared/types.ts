@@ -147,6 +147,24 @@ export interface FileIndexStatus {
   homeDir: string;
 }
 
+/**
+ * What a rebuild actually did. Stored on the job run record, so "it succeeded"
+ * is always accompanied by the evidence — a run that indexed 0 files is
+ * distinguishable from one that indexed 180,000.
+ */
+export interface FileIndexResult {
+  filesIndexed: number;
+  /** Rows dropped because the file no longer exists. */
+  filesPruned: number;
+  durationMs: number;
+  /** Hit the entry ceiling — the index is a truncated view of the tree. */
+  capped: boolean;
+  /** Directories the walk could not read (permissions, or deleted mid-scan). */
+  unreadableDirs: number;
+  /** This call joined a rebuild already in flight rather than starting its own. */
+  joinedExisting: boolean;
+}
+
 // ── Performance ──
 export type PerfStatus = 'good' | 'warning' | 'critical';
 
@@ -284,6 +302,8 @@ export const IPC = {
   FILES_READ_CONTENT: 'files:read-content',
   FILES_OPEN: 'files:open',
   FILES_REVEAL: 'files:reveal',
+  // Jobs — every non-success outcome the scheduler produces arrives here.
+  JOBS_NOTIFICATION: 'jobs:notification',
   // Performance
   PERF_STATIC_INFO: 'perf:static-info',
   PERF_START: 'perf:start',
@@ -327,6 +347,34 @@ export interface ScheduledJob {
   system: boolean;
   running: boolean;
   createdAt: number;
+}
+
+/**
+ * Why an automation is telling you something. Every value here is an outcome
+ * that is *not* a clean success — the scheduler emits one for each, so no
+ * non-success can pass without reaching the UI.
+ */
+export type JobAlertKind =
+  | 'failure'
+  | 'timeout'
+  | 'skipped'
+  | 'deferred'
+  | 'cancelled'
+  | 'awaiting_approval'
+  | 'disabled'
+  /** Succeeded, but the outcome is not what a green check implies. */
+  | 'degraded';
+
+export interface JobNotification {
+  id: string;
+  priority: 'urgent' | 'normal';
+  kind: JobAlertKind;
+  title: string;
+  body: string;
+  /** Empty for engine-level alerts that belong to no single job. */
+  jobId: string;
+  jobName: string;
+  at: number;
 }
 
 export interface JobRunRecord {

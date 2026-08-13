@@ -1,11 +1,13 @@
+import { randomUUID } from 'crypto'
 import { Notification, type BrowserWindow } from 'electron'
 import { onQueuedApprovalGranted } from '../capabilities/ipc'
 import { setReauthNotifier } from '../auth/googleAuth'
 import { seedSystemJobs } from './seed'
 import { resumeApprovedRun, setJobNotifier, startScheduler } from './scheduler'
 import { findRunByApprovalId } from './store'
+import { IPC } from '../../shared/types'
 
-export const JOB_NOTIFICATION_CHANNEL = 'jobs:notification'
+export const JOB_NOTIFICATION_CHANNEL = IPC.JOBS_NOTIFICATION
 
 /**
  * Boots the job engine and connects it to the surfaces it needs.
@@ -26,10 +28,14 @@ export function initJobEngine(win: BrowserWindow): void {
   setReauthNotifier((message) => {
     if (!win.isDestroyed()) {
       win.webContents.send(JOB_NOTIFICATION_CHANNEL, {
+        id: randomUUID(),
         priority: 'urgent',
+        kind: 'failure',
         title: 'Google sign-in expired',
         body: message,
         jobId: '',
+        jobName: 'Google account',
+        at: Date.now(),
       })
     }
     if (Notification.isSupported()) {

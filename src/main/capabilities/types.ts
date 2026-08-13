@@ -101,6 +101,19 @@ export interface CapabilityDef<TArgs = unknown, TResult = unknown> {
    * round trip better than a JSON blob.
    */
   formatResult?: (result: TResult) => string
+
+  /**
+   * Flags a *degraded* success — the call did not fail, but the outcome is not
+   * what the user would assume from a green check.
+   *
+   * Exists because "success" and "failure" are too coarse to be honest. A file
+   * index that stopped at its entry ceiling, or a sync that skipped half its
+   * items on permission errors, both return normally; without this the Jobs view
+   * shows an unqualified OK and the shortfall is invisible until someone
+   * notices results are missing. Returning a string makes the scheduler notify
+   * the user and annotate the run.
+   */
+  resultWarning?: (result: TResult) => string | null
 }
 
 /** Erased form for storage in the registry map. */

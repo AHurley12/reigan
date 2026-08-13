@@ -23,8 +23,13 @@ export function registerFileHandlers(): void {
   ipcMain.handle(IPC.FILES_INDEX_STATUS, async () => getIndexStatus())
 
   ipcMain.handle(IPC.FILES_REINDEX, async () => {
-    // Fire-and-forget — the renderer polls FILES_INDEX_STATUS for progress.
-    runFullIndex().catch(() => {})
+    // Still fire-and-forget — the renderer polls FILES_INDEX_STATUS for progress
+    // — but the rejection is no longer discarded. runFullIndex records the
+    // failure on the index status before it throws, so the panel's error line
+    // picks it up on the next poll; this catch only stops an unhandled rejection.
+    runFullIndex().catch((err) => {
+      console.error('[files] manual reindex failed:', err)
+    })
     return { started: true }
   })
 

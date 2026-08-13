@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useRef, useCallback } from 'react'
+import React, { Suspense, lazy, useRef, useCallback, useEffect } from 'react'
 import { TitleBar } from './TitleBar'
 import { NavBar } from '../Nav/NavBar'
 import { ChatPanel } from '../Chat/ChatPanel'
@@ -13,6 +13,8 @@ import { ToastStack } from '../shared/Toast'
 import { ApprovalDialog } from '../Approvals/ApprovalDialog'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useToastStore } from '../../stores/toastStore'
+import { useJobAlertStore, alertVariant } from '../../stores/jobAlertStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
 
@@ -64,6 +66,18 @@ export function AppShell() {
   }, [])
 
   useKeyboard(focusChat)
+
+  // Subscribed at the shell, not in the Jobs view: a 04:00 failure has to be
+  // captured whichever tab happens to be open, and the Jobs view is usually not
+  // the one. Toast for the interruption, alert store for the record.
+  useEffect(() => {
+    const bridge = window.reigan?.jobs
+    if (!bridge) return
+    return bridge.onNotification((event) => {
+      useJobAlertStore.getState().push(event)
+      useToastStore.getState().push(`${event.title} — ${event.body}`, alertVariant(event.kind))
+    })
+  }, [])
 
   const renderModule = () => {
     switch (activeModule) {

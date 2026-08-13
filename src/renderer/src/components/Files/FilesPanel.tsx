@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Search, Folder, FolderOpen, File as FileIcon, FileText, Image as ImageIcon,
   Code2, Music, Archive, ChevronRight, Home, ArrowUp, RefreshCw, ExternalLink,
+  AlertTriangle,
 } from 'lucide-react'
 import { useIPC } from '../../hooks/useIPC'
 import { SectionHeader } from '../shared/SectionHeader'
@@ -275,6 +276,24 @@ export function FilesPanel() {
             {indexStatus.indexing
               ? `Indexing… ${indexStatus.filesIndexed.toLocaleString()} files scanned`
               : `${indexStatus.filesIndexed.toLocaleString()} files indexed`}
+          </div>
+        )}
+
+        {/* The indexer has always recorded its failures here; nothing rendered
+            them, so a rebuild could die and the panel would keep showing a stale
+            count as though all were well. */}
+        {indexStatus?.error && !indexStatus.indexing && (
+          <div
+            className="mx-4 mb-1 px-3 py-2 rounded flex items-start gap-2"
+            style={{
+              background: 'color-mix(in srgb, var(--status-error) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--status-error) 30%, transparent)',
+            }}
+          >
+            <AlertTriangle size={13} style={{ color: 'var(--status-error)', flexShrink: 0, marginTop: 1 }} />
+            <span className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              Last index rebuild failed — results below may be stale or incomplete. {indexStatus.error}
+            </span>
           </div>
         )}
 

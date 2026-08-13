@@ -3,7 +3,13 @@ import { join, resolve, extname, basename, dirname, sep } from 'path'
 import { app } from 'electron'
 import { getDatabase } from '../db/database'
 import { FILE_TYPE_CATEGORIES } from '../../shared/constants'
-import type { FileEntry, FileSearchParams, FileIndexStatus, FileTypeCategoryId } from '../../shared/types'
+import type {
+  FileEntry,
+  FileSearchParams,
+  FileIndexStatus,
+  FileIndexResult,
+  FileTypeCategoryId,
+} from '../../shared/types'
 
 // Read-only scope: the user's home profile only. Never Program Files, Windows,
 // other user profiles, or drives outside this tree — "everything regarding the
@@ -45,6 +51,11 @@ let status: Omit<FileIndexStatus, 'homeDir'> = { indexing: false, filesIndexed: 
 
 export function getIndexStatus(): FileIndexStatus {
   return { ...status, homeDir: getRootDir() }
+}
+
+/** Per-scan tallies, threaded through `walk` so a partial scan can say how partial. */
+interface WalkStats {
+  unreadableDirs: number
 }
 
 export function getHomeDir(): string {
@@ -112,11 +123,18 @@ export async function listDirectory(dirPath: string): Promise<FileEntry[]> {
   return entries
 }
 
-async function walk(dir: string, onEntry: (e: FileEntry) => Promise<boolean>): Promise<boolean> {
+async function walk(
+  dir: string,
+  onEntry: (e: FileEntry) => Promise<boolean>,
+  stats: WalkStats
+): Promise<boolean> {
   let dirents: import('fs').Dirent[]
   try {
     dirents = await fs.readdir(dir, { withFileTypes: true })
   } catch {
+    // Permission-denied, or the directory vanished mid-scan. Not fatal — but it
+    // is a hole in the index, so it is counted rather than passed over silently.
+    stats.unreadableDirs++
     return false
   }
 
@@ -130,9 +148,10 @@ async function walk(dir: string, onEntry: (e: FileEntry) => Promise<boolean>): P
         const stat = await fs.stat(full)
         if (await onEntry(toEntry(full, dirent.name, true, stat.size, stat.mtimeMs))) return true
       } catch {
+        stats.unreadableDirs++
         continue
       }
-      if (await walk(full, onEntry)) return true
+      if (await walk(full, onEntry, stats)) return true
     } else if (dirent.isFile()) {
       try {
         const stat = await fs.stat(full)
@@ -145,9 +164,33 @@ async function walk(dir: string, onEntry: (e: FileEntry) => Promise<boolean>): P
   return false
 }
 
-/** Full rescan of the home directory, upserting into files_index and pruning stale rows. */
-export async function runFullIndex(): Promise<void> {
-  if (status.indexing) return
+let inFlight: Promise<FileIndexResult> | null = null
+
+/**
+ * Full rescan of the home directory, upserting into files_index and pruning
+ * stale rows.
+ *
+ * Two things here are load-bearing for honest job reporting:
+ *
+ *  - It **throws** on a fatal scan error. It used to catch everything into
+ *    `status.error` and resolve normally, so the scheduler wrote `success` for a
+ *    scan that indexed nothing. The Jobs view said OK while the index rotted.
+ *  - A concurrent caller **joins** the run already in flight instead of
+ *    returning immediately. The old early return reported a ~0s success for work
+ *    it had not done — reachable any time the Files panel's refresh button
+ *    overlaps the 04:00 job.
+ */
+export function runFullIndex(): Promise<FileIndexResult> {
+  if (inFlight) return inFlight.then((r) => ({ ...r, joinedExisting: true }))
+
+  inFlight = doFullIndex().finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+async function doFullIndex(): Promise<FileIndexResult> {
+  const startedAt = Date.now()
   status = { indexing: true, filesIndexed: 0, lastIndexedAt: status.lastIndexedAt, error: null }
 
   const db = getDatabase()
@@ -170,42 +213,68 @@ export async function runFullIndex(): Promise<void> {
   let batch: ReturnType<typeof toRow>[] = []
   let sinceYield = 0
   let capped = false
+  const stats: WalkStats = { unreadableDirs: 0 }
 
   try {
-    await walk(getRootDir(), async (entry) => {
-      batch.push(toRow(entry, scanStart))
-      status.filesIndexed++
+    await walk(
+      getRootDir(),
+      async (entry) => {
+        batch.push(toRow(entry, scanStart))
+        status.filesIndexed++
 
-      if (batch.length >= BATCH_SIZE) {
-        insertBatch(batch)
-        batch = []
-      }
+        if (batch.length >= BATCH_SIZE) {
+          insertBatch(batch)
+          batch = []
+        }
 
-      sinceYield++
-      if (sinceYield >= YIELD_EVERY) {
-        sinceYield = 0
-        await new Promise((r) => setImmediate(r))
-      }
+        sinceYield++
+        if (sinceYield >= YIELD_EVERY) {
+          sinceYield = 0
+          await new Promise((r) => setImmediate(r))
+        }
 
-      if (status.filesIndexed >= MAX_INDEXED_ENTRIES) {
-        capped = true
-        return true // stop walking
-      }
-      return false
-    })
+        if (status.filesIndexed >= MAX_INDEXED_ENTRIES) {
+          capped = true
+          return true // stop walking
+        }
+        return false
+      },
+      stats
+    )
+
+    if (batch.length) insertBatch(batch)
   } catch (err) {
-    status.error = err instanceof Error ? err.message : String(err)
+    // Fatal: the walk or a write blew up. Record it for the Files panel, clear
+    // the indexing flag so the UI does not spin forever, then rethrow so the
+    // caller — and the job run record — see a failure rather than a success.
+    const message = err instanceof Error ? err.message : String(err)
+    status = {
+      indexing: false,
+      filesIndexed: status.filesIndexed,
+      lastIndexedAt: status.lastIndexedAt,
+      error: message,
+    }
+    throw new Error(
+      `File index rebuild failed after ${status.filesIndexed.toLocaleString()} entries: ${message}`
+    )
   }
-
-  if (batch.length) insertBatch(batch)
 
   // Anything not touched by this scan (and older than it) has been deleted/moved.
   // Skipped while capped, since an early stop would otherwise prune untouched files.
-  if (!capped) {
-    db.prepare('DELETE FROM files_index WHERE indexed_at < ?').run(scanStart)
-  }
+  const filesPruned = capped
+    ? 0
+    : db.prepare('DELETE FROM files_index WHERE indexed_at < ?').run(scanStart).changes
 
-  status = { indexing: false, filesIndexed: status.filesIndexed, lastIndexedAt: Date.now(), error: status.error }
+  status = { indexing: false, filesIndexed: status.filesIndexed, lastIndexedAt: Date.now(), error: null }
+
+  return {
+    filesIndexed: status.filesIndexed,
+    filesPruned,
+    durationMs: Date.now() - startedAt,
+    capped,
+    unreadableDirs: stats.unreadableDirs,
+    joinedExisting: false,
+  }
 }
 
 function rowToEntry(row: any): FileEntry {

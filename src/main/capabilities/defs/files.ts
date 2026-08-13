@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { runFullIndex } from '../../files/fileIndexer'
 import type { AnyCapability } from '../types'
+import type { FileIndexResult } from '../../../shared/types'
 
 /**
  * The file index, as a schedulable capability.
@@ -20,12 +21,35 @@ export const fileCapabilities: AnyCapability[] = [
     // than mutating anything the user authored.
     risk: 'read',
     schema: z.object({}),
-    handler: async () => {
-      const startedAt = Date.now()
-      const result = await runFullIndex()
-      return { ...(result ?? {}), durationMs: Date.now() - startedAt }
+    // Returned verbatim so the run record carries the evidence. The previous
+    // version spread a `void` return and reported duration alone, which made a
+    // scan that indexed nothing indistinguishable from a healthy one.
+    handler: (): Promise<FileIndexResult> => runFullIndex(),
+    formatResult: (r: FileIndexResult) => {
+      if (r.joinedExisting) {
+        return `A rebuild was already running; joined it. ${r.filesIndexed.toLocaleString()} entries indexed in ${(r.durationMs / 1000).toFixed(1)}s.`
+      }
+      const parts = [
+        `${r.filesIndexed.toLocaleString()} entries indexed in ${(r.durationMs / 1000).toFixed(1)}s`,
+      ]
+      if (r.filesPruned > 0) parts.push(`${r.filesPruned.toLocaleString()} stale entries removed`)
+      if (r.unreadableDirs > 0) parts.push(`${r.unreadableDirs.toLocaleString()} unreadable directories`)
+      if (r.capped) parts.push('stopped at the entry ceiling — the index is incomplete')
+      return `File index rebuilt: ${parts.join('; ')}.`
     },
-    formatResult: (r: { durationMs: number }) =>
-      `File index rebuilt in ${(r.durationMs / 1000).toFixed(1)}s.`,
+    // A rebuild can succeed and still leave the index wrong. Each of these would
+    // otherwise sit behind an unqualified green check.
+    resultWarning: (r: FileIndexResult) => {
+      if (r.capped) {
+        return `The file index stopped at its ${r.filesIndexed.toLocaleString()}-entry ceiling. Search results are incomplete, and stale entries were not pruned.`
+      }
+      if (r.filesIndexed === 0) {
+        return 'The file index rebuild finished but indexed nothing. Search will return no results.'
+      }
+      if (r.unreadableDirs > 0) {
+        return `${r.unreadableDirs.toLocaleString()} directories could not be read during the file index rebuild, so their contents are missing from search.`
+      }
+      return null
+    },
   },
 ]
