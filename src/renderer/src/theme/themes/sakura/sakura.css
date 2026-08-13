@@ -1,0 +1,174 @@
+/*
+ * Sakura (Yozakura) — material and decoration a token cannot express.
+ *
+ * Everything is scoped to html[data-theme='sakura'] and keyed off the
+ * structural classes in globals.css, so no feature component knows this skin
+ * exists. Three ideas, applied consistently rather than decoratively:
+ *
+ *   1. Washi fibre — a *directional* paper tooth. grain.ts generates isotropic
+ *      noise, which reads as television static; real paper fibre runs one way.
+ *   2. The ruled page — Japanese editorial layout is built on rules, so every
+ *      divider and header is treated as typography, not as a border.
+ *   3. Lantern light falls from above, so highlights sit on top edges only.
+ */
+
+html[data-theme='sakura'] {
+  --washi-fibre: rgba(232, 223, 214, 0.012);
+  --lantern-line: rgba(232, 223, 214, 0.07);
+  --sumi-shadow: rgba(0, 0, 0, 0.4);
+  --petal-line: rgba(227, 154, 168, 0.34);
+
+  /* The branch is a big sparse figure and wants more room than the default
+     480px. 0.14 rather than the 0.06 default: it is ink on a dark ground, and
+     at 0.10 the figure was measurably painting but not actually visible. */
+  --theme-watermark-size: 660px;
+  --theme-watermark-opacity: 0.14;
+}
+
+/* ── Washi fibre: long striations running one way, in soft bands rather than
+      hard 1px rules.
+
+      The first version crossed a near-horizontal set with a near-vertical one,
+      on the theory that laid paper has a cross-fibre. On screen the two
+      gradients formed an unmistakable 8px grid and the whole chat surface read
+      as engineering graph paper — and it was opaque enough to swallow the
+      watermark behind it. Paper fibre is *directional*; one axis is the fix,
+      and the isotropic tooth that the second axis was reaching for is already
+      supplied by --effect-grain-image on .grained.
+
+      Note the angle: a gradient's bands run *perpendicular* to its direction,
+      so 93deg gives near-vertical striations. 3deg is the near-horizontal one
+      wanted here — laid lines run with the text baselines, where they disappear
+      at a glance instead of ruling the surface into columns behind the copy.
+
+      Backgrounds, not overlays, so content above stays crisp. ── */
+html[data-theme='sakura'] .panel-surface,
+html[data-theme='sakura'] .chat-surface {
+  background-image: repeating-linear-gradient(
+    3deg,
+    transparent 0px,
+    var(--washi-fibre) 4px,
+    transparent 9px,
+    transparent 26px
+  );
+}
+
+/* Lantern light from above: a hairline lift on the top edge of every raised
+   surface, and ink pooling underneath. The counterpart of gothic's silver
+   lining — same structural hook, different material.
+
+   No `position` here, deliberately. This selector outweighs a Tailwind utility,
+   and a `position: relative` on .panel-surface has previously torn the fixed
+   settings drawer out of the viewport. A skin decorates; it never positions. */
+html[data-theme='sakura'] .panel-surface {
+  box-shadow:
+    inset 0 1px 0 var(--lantern-line),
+    inset 0 -1px 0 var(--sumi-shadow);
+}
+
+/* ── The ruled page. Editorial Japanese display is letterspaced mincho, and at
+      this tracking the header reads as a printed heading rather than as a UI
+      label. This is where the brief's "vertical rhythm" actually lands: the
+      app's padding comes from Tailwind utilities that no skin can reach, so
+      the rhythm is carried by type instead of by margin. ── */
+html[data-theme='sakura'] .section-title {
+  font-family: var(--type-display);
+  letter-spacing: var(--type-tracking-wide);
+  font-weight: var(--type-weight-normal);
+}
+
+/* Kanji labels sit tighter and quieter than their romaji, the way a printed
+   Japanese caption does. The <ruby> support in globals.css already puts the
+   romaji underneath; this is only the weighting. */
+html[data-theme='sakura'] .font-kanji,
+html[data-theme='sakura'] ruby {
+  letter-spacing: 0.04em;
+}
+
+/* A divider is a fold in the paper: the hairline plus a single lighter pixel
+   beneath it, so the rule has a lit edge like a crease catching lantern light. */
+html[data-theme='sakura'] .rule,
+html[data-theme='sakura'] .rule-b {
+  box-shadow: 0 1px 0 rgba(232, 223, 214, 0.022);
+}
+
+/* .rule-ornate gets a single blossom at the centre of the crease — five petals,
+   drawn as one background image on the existing pseudo-element budget rather
+   than as new DOM. Restraint is the point: one mark, not a border of them. */
+html[data-theme='sakura'] .rule-ornate::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 22px;
+  height: 10px;
+  transform: translateX(-50%);
+  background-color: var(--surface-base);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='10' viewBox='0 0 22 10' fill='none' stroke='%23E39AA8' stroke-opacity='0.42' stroke-width='0.7'%3E%3Cpath d='M11 1.6c1.1 1 1.7 2 1.7 3.1 0 1-.7 1.8-1.7 1.8s-1.7-.8-1.7-1.8c0-1.1.6-2.1 1.7-3.1z'/%3E%3Cpath d='M14.6 3.4c.3 1.4.1 2.5-.6 3.3-.7.7-1.7.7-2.3 0'/%3E%3Cpath d='M7.4 3.4c-.3 1.4-.1 2.5.6 3.3.7.7 1.7.7 2.3 0'/%3E%3Cpath d='M2 6h4M16 6h4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* ── Ink-wash branch watermark. The image itself is generated in branch.ts and
+      arrives through --theme-watermark; this is only its entrance. The
+      animation plays when the rule starts matching — i.e. the moment
+      data-theme flips to sakura, and once on cold start — which is exactly the
+      "blossoms bloom in on theme entry" the brief asks for, with no React
+      involvement at all.
+
+      Under reduced motion the global rule in globals.css collapses the
+      duration to 0.01ms, so the branch simply appears fully bloomed. ── */
+html[data-theme='sakura'] .chat-surface::before {
+  transform-origin: 62% 30%;
+  animation: sakura-bloom 1400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes sakura-bloom {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 0.1;
+    transform: scale(1);
+  }
+}
+
+/* ── Signature text reveal: `reveal-settle`. A petal landing — each character
+      arrives slightly high and tilted, then settles onto the line.
+
+      Literal values only, no var(): a var() inside @keyframes has to be
+      resolved in style on every frame, which takes the animation off the
+      compositor. Duration and stagger come from theme.textReveal in the
+      registry, which InscribeText writes onto each unit as inline style. ── */
+@keyframes reveal-settle {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) rotate(3deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+/* ── Material hooks. Aero binds these to glass; here they are paper and
+      lantern paper respectively. Kept minimal — a lantern is a flat warm panel
+      with a lit top edge, not a bevelled button. ── */
+html[data-theme='sakura'] .glass-panel {
+  background-color: var(--surface-glass-tint);
+  backdrop-filter: blur(var(--surface-glass-blur));
+  border: 1px solid var(--border-subtle);
+}
+
+html[data-theme='sakura'] .gloss-button {
+  background-image: linear-gradient(
+    180deg,
+    rgba(232, 223, 214, 0.1) 0%,
+    rgba(232, 223, 214, 0) 55%
+  );
+}
+
+html[data-theme='sakura'] .chrome-bezel {
+  box-shadow: inset 0 1px 0 var(--lantern-line);
+}

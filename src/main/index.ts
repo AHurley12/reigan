@@ -39,6 +39,7 @@ const THEME_BACKGROUNDS: Record<string, string> = {
   // there is no token to mirror here — this is the sky the ambient gradient
   // starts from, which is what the window should flash before it paints.
   aero: '#7FD4F5',
+  sakura: '#14121A',
 }
 const DEFAULT_THEME_ID = 'shingan'
 

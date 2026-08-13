@@ -1,0 +1,73 @@
+/* Locally bundled — no CDN, no url() pointing off-machine.
+ *
+ * Each face is subset to exactly what this app's own chrome renders:
+ * full Latin + punctuation, plus every Japanese character appearing in
+ * shipped UI strings (i18n/ja.ts, the labelJa fields across the
+ * registries, STATE_LABELS in shared/constants.ts). That is what keeps a
+ * three-family Japanese type system down to a few hundred KB instead of
+ * the ~5 MB Google's frequency-clustered subsets would have cost.
+ *
+ * Arbitrary runtime kanji — an assistant reply written in Japanese — is
+ * deliberately NOT in the subset. It falls through to the families
+ * globals.css already imports and to the Windows JP system fonts named in
+ * tokens.ts's stacks, which is why every stack here ends in Yu Mincho /
+ * Yu Gothic UI / Meiryo rather than a bare generic.
+ *
+ * Regenerate with tmp/subset_fonts.py if the shipped label set changes.
+ */
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/shippori-mincho-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/shippori-mincho-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/zen-kaku-gothic-new-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/zen-kaku-gothic-new-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Zen Kaku Gothic New';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/zen-kaku-gothic-new-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'M PLUS 1 Code';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/m-plus-1-code-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'M PLUS 1 Code';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/m-plus-1-code-500.woff2') format('woff2');
+}

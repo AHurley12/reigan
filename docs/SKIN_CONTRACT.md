@@ -4,9 +4,9 @@ The permanent reference for how skinning works in Shingan, and what it takes to 
 a new one. If the code and this document disagree, one of them is a bug.
 
 Terminology: the product calls them **skins**; the code calls them **themes**. The
-registry ids are `shingan` (product name "Shingan"), `gothic` ("Sepulchral") and
-`aero` ("Frutiger Aero"). This document uses the code's names, since those are
-what you type.
+registry ids are `shingan` (product name "Shingan"), `gothic` ("Sepulchral"),
+`aero` ("Frutiger Aero") and `sakura` ("Yozakura"). This document uses the code's
+names, since those are what you type.
 
 ---
 
@@ -23,7 +23,8 @@ Three escape hatches exist, and all are legitimate:
 | --- | --- | --- |
 | `theme.tokens.*` read in JS | `Lock/AuthOrb`, `Lock/LockScreen`, `Lock/CircularWaveform`, `Lock/EnrollmentFlow`, `Orb/VoiceOrb` | Canvas/WebGL cannot read CSS custom properties. They read token *values*, never the id. |
 | `theme.textReveal` read in JS | `Chat/InscribeText` | The reveal animation name/unit/timing is data; the component is mechanism only. |
-| `html[data-theme='…']` CSS | `themes/gothic/{ornament,signature}.css`, `themes/aero/{aero,ambient}.css` | Material and decoration a token can't express. Scoped in CSS, invisible to components. |
+| `html[data-theme='…']` CSS | `themes/gothic/{ornament,signature}.css`, `themes/aero/{aero,ambient}.css`, `themes/sakura/sakura.css` | Material and decoration a token can't express. Scoped in CSS, invisible to components. |
+| `EffectsProps.activity` read in JS | `themes/sakura/Effects.tsx` | The assistant's state, so an ambient layer can double as a status display. It is data, like `textReveal`; the layer never learns which skin it is. |
 
 ---
 
@@ -110,51 +111,51 @@ cost: **6–8.7ms** to apply (budget 100ms).
 
 ### 4.1 Colour and material
 
-| Token | CSS var | `shingan` | `gothic` | `aero` |
-| --- | --- | --- | --- | --- |
-| `surface.base` | `--surface-base` | `#0B0A08` | `#0A0B0F` | `rgba(127,212,245,0)` |
-| `surface.raised` | `--surface-raised` | `#16140F` | `#16181F` | `rgba(255,255,255,0.40)` |
-| `surface.overlay` | `--surface-overlay` | `#1E1B15` | `#1D2029` | `rgba(255,255,255,0.55)` |
-| `surface.sunken` | `--surface-sunken` | `#272319` | `#06070A` | `rgba(11,110,150,0.16)` |
-| `surface.scrim` | `--surface-scrim` | `rgba(11,10,8,0.7)` | `rgba(6,7,10,0.72)` | `rgba(6,62,86,0.44)` |
-| `surface.glossTop` | `--surface-gloss-top` | `rgba(237,230,214,0.04)` | `rgba(198,195,186,0.10)` | `rgba(255,255,255,0.24)` |
-| `surface.glossBottom` | `--surface-gloss-bottom` | `rgba(0,0,0,0.10)` | `rgba(0,0,0,0.30)` | `rgba(201,221,232,0.08)` |
-| `surface.glassTint` | `--surface-glass-tint` | `rgba(0,0,0,0)` | `rgba(10,11,15,0.55)` | `rgba(244,251,255,0.40)` |
-| `surface.glassBlur` | `--surface-glass-blur` | `0px` | `10px` | `9px` |
-| `text.primary` | `--text-primary` | `#EDE6D6` | `#ADABA3` | `#06303F` |
-| `text.secondary` | `--text-secondary` | `#B5AB98` | `#87827A` | `#134B60` |
-| `text.muted` | `--text-muted` | `#6B6455` | `#524F49` | `#234657` |
-| `text.inverse` | `--text-inverse` | `#0B0A08` | `#0A0B0F` | `#F4FBFF` |
-| `text.accent` | `--text-accent` | `#E0A54A` | `#8C2B3B` | `#0B6E96` |
-| `text.kanji` | `--text-kanji` | `#8A8065` | `#87827A` | `#234657` |
-| `text.onAccent` | `--text-on-accent` | `#FFFFFF` | `#E8E4DA` | `#FFFFFF` |
-| `text.onGlass` | `--text-on-glass` | `#EDE6D6` | `#ADABA3` | `#06303F` |
-| `accent.primary` | `--accent-primary` | `#D8432A` | `#6E1423` | `#16A8D8` |
-| `accent.secondary` | `--accent-secondary` | `#23A18C` | `#4A6656` | `#8FD400` |
-| `accent.danger` | `--accent-danger` | `#E5484D` | `#9E2A3D` | `#D9452F` |
-| `accent.success` | `--accent-success` | `#23A18C` | `#4A6656` | `#8FD400` |
-| `accent.gradient` | `--accent-gradient` | 135° shu→gold | 135° oxblood→verdigris | 180° gloss, hard terminator |
-| `border.subtle` | `--border-subtle` | `rgba(237,230,214,0.07)` | `rgba(173,171,163,0.08)` | `rgba(6,62,86,0.14)` |
-| `border.strong` | `--border-strong` | `rgba(237,230,214,0.14)` | `rgba(173,171,163,0.16)` | `rgba(6,62,86,0.28)` |
-| `border.focus` | `--border-focus` | `#23A18C` | `#C1495B` | `#16A8D8` |
-| `state.tint` | `--state-tint` | `#FFFFFF` | `#FFFFFF` | `#06303F` |
-| `state.selected` | `--state-selected` | `rgba(255,255,255,0.10)` | same | `rgba(22,168,216,0.24)` |
-| `state.disabledOpacity` | `--state-disabled-opacity` | `0.4` | `0.4` | `0.45` |
-| `edge.highlight` | `--edge-highlight` | `transparent` | `rgba(198,195,186,0.16)` | `rgba(255,255,255,0.9)` |
-| `edge.shadow` | `--edge-shadow` | `transparent` | `rgba(0,0,0,0.55)` | `rgba(11,110,150,0.22)` |
-| `bevel.outer` | `--bevel-outer` | `0 8px 24px /0.45` | `0 8px 24px /0.6` | `0 8px 24px rgba(6,62,86,0.26)` |
-| `bevel.inner` | `--bevel-inner` | faint top lining | silver lining | white top + water underside |
-| `bevel.pressed` | `--bevel-pressed` | `none` | `none` | inset 2px 6px |
-| `bevel.cast` | `--bevel-cast` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.5)` | `rgba(6,62,86,0.24)` |
-| `sheen.angle` | `--sheen-angle` | `180deg` | `180deg` | `180deg` |
-| `sheen.specular` | `--sheen-specular` | `transparent` | `transparent` | `rgba(255,255,255,0.60)` |
-| `ambient.layerOpacity` | `--ambient-layer-opacity` | `0` | `1` | `1` |
-| `ambient.layerBlend` | `--ambient-layer-blend` | `normal` | `normal` | `normal` |
-| `ambient.layerZ` | `--ambient-layer-z` | `0` | `0` | `-1` |
-| `focus.glow` | `--focus-glow` | `none` | `none` | `0 0 0 4px rgba(22,168,216,0.30)` |
-| `effect.glow` | `--effect-glow` | shu glow | oxblood glow | aqua glow |
-| `effect.noiseOpacity` | `--effect-noise-opacity` | `0` | `0.04` | `0` |
-| `effect.texture` | `--effect-texture` | `none` | `none` | `none` |
+| Token | CSS var | `shingan` | `gothic` | `aero` | `sakura` |
+| --- | --- | --- | --- | --- | --- |
+| `surface.base` | `--surface-base` | `#0B0A08` | `#0A0B0F` | `rgba(127,212,245,0)` | `#14121A` |
+| `surface.raised` | `--surface-raised` | `#16140F` | `#16181F` | `rgba(255,255,255,0.40)` | `#1E1B24` |
+| `surface.overlay` | `--surface-overlay` | `#1E1B15` | `#1D2029` | `rgba(255,255,255,0.55)` | `#272231` |
+| `surface.sunken` | `--surface-sunken` | `#272319` | `#06070A` | `rgba(11,110,150,0.16)` | `#0E0C12` |
+| `surface.scrim` | `--surface-scrim` | `rgba(11,10,8,0.7)` | `rgba(6,7,10,0.72)` | `rgba(6,62,86,0.44)` | `rgba(10,9,14,0.72)` |
+| `surface.glossTop` | `--surface-gloss-top` | `rgba(237,230,214,0.04)` | `rgba(198,195,186,0.10)` | `rgba(255,255,255,0.24)` | `rgba(232,223,214,0.045)` |
+| `surface.glossBottom` | `--surface-gloss-bottom` | `rgba(0,0,0,0.10)` | `rgba(0,0,0,0.30)` | `rgba(201,221,232,0.08)` | `rgba(0,0,0,0.16)` |
+| `surface.glassTint` | `--surface-glass-tint` | `rgba(0,0,0,0)` | `rgba(10,11,15,0.55)` | `rgba(244,251,255,0.40)` | `rgba(30,27,36,0.55)` |
+| `surface.glassBlur` | `--surface-glass-blur` | `0px` | `10px` | `9px` | `8px` |
+| `text.primary` | `--text-primary` | `#EDE6D6` | `#ADABA3` | `#06303F` | `#E8DFD6` |
+| `text.secondary` | `--text-secondary` | `#B5AB98` | `#87827A` | `#134B60` | `#B8ACA2` |
+| `text.muted` | `--text-muted` | `#6B6455` | `#524F49` | `#234657` | `#94888D` |
+| `text.inverse` | `--text-inverse` | `#0B0A08` | `#0A0B0F` | `#F4FBFF` | `#14121A` |
+| `text.accent` | `--text-accent` | `#E0A54A` | `#8C2B3B` | `#0B6E96` | `#F0B9C4` |
+| `text.kanji` | `--text-kanji` | `#8A8065` | `#87827A` | `#234657` | `#B0A0A6` |
+| `text.onAccent` | `--text-on-accent` | `#FFFFFF` | `#E8E4DA` | `#FFFFFF` | `#1A1016` |
+| `text.onGlass` | `--text-on-glass` | `#EDE6D6` | `#ADABA3` | `#06303F` | `#E8DFD6` |
+| `accent.primary` | `--accent-primary` | `#D8432A` | `#6E1423` | `#16A8D8` | `#E39AA8` |
+| `accent.secondary` | `--accent-secondary` | `#23A18C` | `#4A6656` | `#8FD400` | `#6E8560` |
+| `accent.danger` | `--accent-danger` | `#E5484D` | `#9E2A3D` | `#D9452F` | `#DC4B4B` |
+| `accent.success` | `--accent-success` | `#23A18C` | `#4A6656` | `#8FD400` | `#7E9970` |
+| `accent.gradient` | `--accent-gradient` | 135° shu→gold | 135° oxblood→verdigris | 180° gloss, hard terminator | 135° lantern rose→ember |
+| `border.subtle` | `--border-subtle` | `rgba(237,230,214,0.07)` | `rgba(173,171,163,0.08)` | `rgba(6,62,86,0.14)` | `rgba(232,223,214,0.075)` |
+| `border.strong` | `--border-strong` | `rgba(237,230,214,0.14)` | `rgba(173,171,163,0.16)` | `rgba(6,62,86,0.28)` | `rgba(232,223,214,0.15)` |
+| `border.focus` | `--border-focus` | `#23A18C` | `#C1495B` | `#16A8D8` | `#C4707E` |
+| `state.tint` | `--state-tint` | `#FFFFFF` | `#FFFFFF` | `#06303F` | `#FFFFFF` |
+| `state.selected` | `--state-selected` | `rgba(255,255,255,0.10)` | same | `rgba(22,168,216,0.24)` | `rgba(227,154,168,0.16)` |
+| `state.disabledOpacity` | `--state-disabled-opacity` | `0.4` | `0.4` | `0.45` | `0.4` |
+| `edge.highlight` | `--edge-highlight` | `transparent` | `rgba(198,195,186,0.16)` | `rgba(255,255,255,0.9)` | `rgba(232,223,214,0.09)` |
+| `edge.shadow` | `--edge-shadow` | `transparent` | `rgba(0,0,0,0.55)` | `rgba(11,110,150,0.22)` | `rgba(0,0,0,0.45)` |
+| `bevel.outer` | `--bevel-outer` | `0 8px 24px /0.45` | `0 8px 24px /0.6` | `0 8px 24px rgba(6,62,86,0.26)` | `0 10px 30px /0.5` |
+| `bevel.inner` | `--bevel-inner` | faint top lining | silver lining | white top + water underside | faint lantern lining |
+| `bevel.pressed` | `--bevel-pressed` | `none` | `none` | inset 2px 6px | `inset 0 2px 6px` |
+| `bevel.cast` | `--bevel-cast` | `rgba(0,0,0,0.4)` | `rgba(0,0,0,0.5)` | `rgba(6,62,86,0.24)` | `rgba(0,0,0,0.45)` |
+| `sheen.angle` | `--sheen-angle` | `180deg` | `180deg` | `180deg` | `180deg` |
+| `sheen.specular` | `--sheen-specular` | `transparent` | `transparent` | `rgba(255,255,255,0.60)` | `rgba(232,223,214,0.12)` |
+| `ambient.layerOpacity` | `--ambient-layer-opacity` | `0` | `1` | `1` | `1` |
+| `ambient.layerBlend` | `--ambient-layer-blend` | `normal` | `normal` | `normal` | `normal` |
+| `ambient.layerZ` | `--ambient-layer-z` | `0` | `0` | `-1` | `0` |
+| `focus.glow` | `--focus-glow` | `none` | `none` | `0 0 0 4px rgba(22,168,216,0.30)` | `0 0 0 3px rgba(196,112,126,0.26)` |
+| `effect.glow` | `--effect-glow` | shu glow | oxblood glow | aqua glow | rose glow |
+| `effect.noiseOpacity` | `--effect-noise-opacity` | `0` | `0.04` | `0` | `0.035` |
+| `effect.texture` | `--effect-texture` | `none` | `none` | `none` | `none` |
 
 **`ambient.layerZ` is load-bearing.** `0` puts the ambient layer above in-flow
 content — right for a sparse dark overlay (fog, embers). `-1` puts it behind
@@ -163,22 +164,31 @@ skin's `surface.base` is transparent and its surfaces are translucent.
 
 ### 4.2 Geometry, type, motion
 
-| Token | `shingan` | `gothic` | `aero` |
-| --- | --- | --- | --- |
-| `radius.sm/md/lg/pill` | `6/8/12/999px` | `3/6/10/999px` | `5/9/13/999px` |
-| `space.xs…xl` | `8/16/24/32/48px` | `4/8/16/24/40px` | `8/16/24/32/48px` |
-| `type.display` | Rajdhani | Cormorant Garamond | Frutiger → Segoe UI |
-| `type.body` | Inter | IBM Plex Sans | Frutiger → Segoe UI |
-| `type.mono` | JetBrains Mono | IBM Plex Mono | Consolas |
-| `type.kanji` | Zen Kaku Gothic New | Yu Mincho | Meiryo |
-| `type.seal` | Shippori Mincho B1 | Cormorant Garamond | Segoe UI |
-| `type.scale.*` | 12/14/16/20/28/44px | same | same |
-| `type.weight` | 400/500/700 | 400/500/600 | 400/600/700 |
-| `type.tracking` | `-0.01em/0/0.06em` | `-0.01em/0/0.08em` | `-0.005em/0/0.045em` |
-| `motion.duration fast/base/slow` | 120/200/300ms | 150/240/420ms | 140/220/340ms |
+| Token | `shingan` | `gothic` | `aero` | `sakura` |
+| --- | --- | --- | --- | --- |
+| `radius.sm/md/lg/pill` | `6/8/12/999px` | `3/6/10/999px` | `5/9/13/999px` | `2/4/6/999px` |
+| `space.xs…xl` | `8/16/24/32/48px` | `4/8/16/24/40px` | `8/16/24/32/48px` | `8/16/28/40/64px` |
+| `type.display` | Rajdhani | Cormorant Garamond | Frutiger → Segoe UI | Shippori Mincho |
+| `type.body` | Inter | IBM Plex Sans | Frutiger → Segoe UI | Zen Kaku Gothic New |
+| `type.mono` | JetBrains Mono | IBM Plex Mono | Consolas | M PLUS 1 Code |
+| `type.kanji` | Zen Kaku Gothic New | Yu Mincho | Meiryo | Zen Kaku Gothic New |
+| `type.seal` | Shippori Mincho B1 | Cormorant Garamond | Segoe UI | Shippori Mincho |
+| `type.scale.*` | 12/14/16/20/28/44px | same | same | same |
+| `type.weight` | 400/500/700 | 400/500/600 | 400/600/700 | 400/500/700 |
+| `type.tracking` | `-0.01em/0/0.06em` | `-0.01em/0/0.08em` | `-0.005em/0/0.045em` | `-0.01em/0/0.1em` |
+| `motion.duration fast/base/slow` | 120/200/300ms | 150/240/420ms | 140/220/340ms | 160/260/420ms |
 
 > `radius.lg` must match the RADIUS constant in a skin's `frame.ts` if it ships
 > a nine-slice frame, or the moulding stops tracking the edge of the box.
+
+> **`space.*` is declarative only.** Nothing in the app reads `var(--space-*)`
+> today — padding comes from Tailwind utilities, and unlike `colors`,
+> `fontFamily` and `borderRadius`, the `spacing` scale is *not* wired through
+> custom properties in `tailwind.config.ts`. A skin that wants a different
+> rhythm cannot get one from these tokens; sakura carries its editorial spacing
+> typographically (line-height and tracking) instead. Wiring Tailwind's spacing
+> scale to the tokens would fix this for every skin at once, and is the obvious
+> next move if a skin ever needs real margin control.
 
 ### 4.3 Non-token `Theme` fields
 
@@ -191,8 +201,19 @@ skin's `surface.base` is transparent and its surfaces are translucent.
 | `textReveal` | yes | `{ animation, unit, durationMs, staggerMs, maxDelayMs }` |
 | `watermark?` | no | `() => string` — a `background-image`, painted by `.chat-surface::before` |
 | `frame?` | no | `() => ThemeFrame` — nine-slice `border-image` for `.ornate` |
-| `Effects` | yes | `React.lazy` ambient layer, receives `{ reducedMotion, paused }` |
+| `Effects` | yes | `React.lazy` ambient layer, receives `{ reducedMotion, paused, activity }` |
 | `previewGradient` | yes | Static swatch for the selector |
+
+> **`EffectsProps.activity`** (added with sakura) carries the current
+> `ReiganState` — `idle | listening | processing | speaking | error | success` —
+> so a skin may treat its atmosphere as a status display. `EffectsLayer`
+> subscribes to `appStore` once and passes it to whichever layer is mounted;
+> skins are free to ignore it, and the three that predate it do.
+>
+> A layer that uses it **must hold the value in a ref**, not in its effect's
+> dependency array. A state change has to retarget the animation, never tear
+> down and restart the RAF loop — see `themes/sakura/Effects.tsx`, where the
+> response is also eased over ~800ms so the field turns rather than cuts.
 
 ### 4.4 Variables written outside the token tree
 
@@ -222,9 +243,12 @@ Themes hook these; components only apply them.
 
 ---
 
-## 5. How to add skin #4
+## 5. How to add skin #5
 
-Four mandatory steps. Everything else is optional decoration.
+Four mandatory steps. Everything else is optional decoration. Sakura was built
+against exactly this list and needed nothing outside it except the shared
+`EffectsProps.activity` field in §4.3 — which was a new *capability* for every
+skin, not a special case for one.
 
 1. **`src/renderer/src/theme/themes/<id>/tokens.ts`** exporting a `ThemeTokens`
    object. Fill in every field — TypeScript enforces it, so a missing token is a
@@ -257,6 +281,18 @@ skin's `tokens.ts`**, not from `globals.css`; a `watermark`; a `frame`; custom
 - **Measure contrast, don't eyeball it.** `docs/` has no tooling for this, but
   the technique used for Aero was: hide a text element's ink, screenshot its
   exact rect, average the real pixels, compute WCAG against the computed colour.
+- **Look at generated artwork before you trust it.** Both procedural figures in
+  this app shipped only after being rendered and inspected. Sakura's branch
+  passed type-check and build while emitting path data as bare text with no
+  `<path>` wrapper — a valid, entirely invisible SVG — and its second draft
+  rendered as crossed sticks with asterisks for flowers. Neither is a failure a
+  compiler or a test can see.
+- **A Japanese type system does not have to cost megabytes.** Google's JP
+  webfonts arrive as ~120 frequency-clustered unicode-range subsets; bundling
+  the ones covering this app's own labels came to 5.7 MB across 453 files.
+  Subsetting the upstream TTFs to the exact glyphs the chrome renders gives the
+  same coverage in 346 KB across 7 (`themes/sakura/fonts.css` documents the
+  cut). Arbitrary runtime text falls back to system JP faces.
 
 ---
 
@@ -286,6 +322,15 @@ non-composited animation — don't chase it.
 
 ## 7. Change log
 
+- **2026-08-11** — `sakura` ("Yozakura") added, completing the three alternates
+  the original theme-engine spec called for. Built as night hanami rather than
+  the spec's daylight washi ground: aero is the app's light skin, and a petal
+  system only works as an emissive mark, not a subtractive one. Shipped with a
+  procedural sumi-e branch watermark, a locally-subset three-family Japanese
+  type system, and `EffectsProps.activity` — a new shared capability letting any
+  ambient layer read the assistant's state, which is what makes sakura's petals
+  a status display. Measured WCAG: `text.primary` 14.11/12.90,
+  `text.secondary` 8.36/7.65, `border.focus` 5.27/4.82 (base/raised).
 - **2026-08-08** — Created during the Phase 0 audit for Frutiger Aero. Then:
   56 hardcoded colour values tokenized (`docs/SKIN_COVERAGE.md`), 24 tokens
   added, Tailwind's `colors` block repointed at tokens, the orb given a colour

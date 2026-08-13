@@ -1,4 +1,5 @@
 import type { ComponentType, LazyExoticComponent } from 'react'
+import type { ReiganState } from '../../../shared/types'
 
 export interface ThemeTokens {
   surface: {
@@ -143,6 +144,18 @@ export interface MotionProfile {
 export interface EffectsProps {
   reducedMotion: boolean
   paused: boolean
+  /**
+   * What the assistant is currently doing. Supplied to every ambient layer so a
+   * skin may treat its atmosphere as a status display — sakura's petals swirl
+   * toward the chat surface while a response generates, which is that skin's
+   * signature element.
+   *
+   * Skins are free to ignore it, and the three that predate it do. A layer that
+   * *does* use it must hold the value in a ref rather than in its effect's
+   * dependencies: a state change should retarget the animation, never tear down
+   * and restart the RAF loop.
+   */
+  activity: ReiganState
 }
 
 /**

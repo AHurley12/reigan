@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useTheme } from '../../theme/useTheme'
+import { useAppStore } from '../../stores/appStore'
 
 
 // Grain is not an overlay — it's a background layer applied via
@@ -33,6 +34,13 @@ function useWindowPaused(): boolean {
 export function EffectsLayer() {
   const { theme, reducedMotion } = useTheme()
   const paused = useWindowPaused()
+  // Passed to every ambient layer so a skin can make its atmosphere report what
+  // the assistant is doing (see EffectsProps.activity). Subscribing here rather
+  // than inside each theme keeps the themes free of app-store dependencies, and
+  // this component renders one <canvas> — a re-render on state change costs
+  // nothing, because the layers hold the value in a ref and never restart their
+  // loop over it.
+  const activity = useAppStore((s) => s.reiganState)
   const Effects = theme.Effects
 
   return (
@@ -41,7 +49,11 @@ export function EffectsLayer() {
     // ground has to sit behind it at -1. See ThemeTokens.ambient.layerZ.
     <div className="fixed inset-0" style={{ pointerEvents: 'none', zIndex: 'var(--ambient-layer-z)' as unknown as number }}>
       <Suspense fallback={null}>
-        <Effects reducedMotion={reducedMotion} paused={theme.motionProfile.pauseOnBlur && paused} />
+        <Effects
+          reducedMotion={reducedMotion}
+          paused={theme.motionProfile.pauseOnBlur && paused}
+          activity={activity}
+        />
       </Suspense>
     </div>
   )
