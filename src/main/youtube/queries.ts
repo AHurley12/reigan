@@ -33,9 +33,13 @@ export interface ChannelSeriesPoint {
   views: number
   watchTimeMinutes: number
   netSubs: number
+  /** Likes given on that day, not the running lifetime total. */
+  likes: number
+  /** Comments posted on that day, likewise a daily figure. */
+  comments: number
 }
 
-/** Daily channel totals for the overview sparklines. */
+/** Daily channel totals for the overview charts. */
 export function getChannelSeries(days: number): ChannelSeriesPoint[] {
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
   const rows = getDatabase()
@@ -43,16 +47,27 @@ export function getChannelSeries(days: number): ChannelSeriesPoint[] {
       `SELECT date,
               SUM(views) AS views,
               SUM(watch_time_minutes) AS watch,
-              SUM(subs_gained) - SUM(subs_lost) AS net_subs
+              SUM(subs_gained) - SUM(subs_lost) AS net_subs,
+              SUM(likes) AS likes,
+              SUM(comments) AS comments
        FROM yt_daily_stats WHERE date >= ? GROUP BY date ORDER BY date`
     )
-    .all(cutoff) as Array<{ date: string; views: number; watch: number; net_subs: number }>
+    .all(cutoff) as Array<{
+    date: string
+    views: number
+    watch: number
+    net_subs: number
+    likes: number
+    comments: number
+  }>
 
   return rows.map((r) => ({
     date: r.date,
     views: r.views ?? 0,
     watchTimeMinutes: r.watch ?? 0,
     netSubs: r.net_subs ?? 0,
+    likes: r.likes ?? 0,
+    comments: r.comments ?? 0,
   }))
 }
 

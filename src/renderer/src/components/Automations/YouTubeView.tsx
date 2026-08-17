@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, AlertTriangle, ExternalLink, ListPlus } from 'lucide-react'
 import { Sparkline } from './Sparkline'
+import { ChannelTrends } from './ChannelTrends'
 import { Button } from '../shared/Button'
 import { useIPC } from '../../hooks/useIPC'
 import { useToastStore } from '../../stores/toastStore'
@@ -278,7 +279,6 @@ export function YouTubeView() {
     )
   }
 
-  const viewSeries = series.map((p) => p.views)
   const watchSeries = series.map((p) => p.watchTimeMinutes)
   const subsSeries = series.map((p) => p.netSubs)
 
@@ -343,29 +343,31 @@ export function YouTubeView() {
 
       <div className="flex-1 overflow-y-auto">
         {tab === 'overview' && (
-          <div className="px-6 py-5 flex flex-col gap-6">
-            <div className="flex gap-8">
-              <Stat
-                label="Views"
-                value={viewSeries.reduce((a, b) => a + b, 0).toLocaleString()}
-                series={viewSeries}
-              />
-              <Stat
-                label="Watch time (min)"
-                value={Math.round(watchSeries.reduce((a, b) => a + b, 0)).toLocaleString()}
-                series={watchSeries}
-                color="var(--status-success)"
-              />
-              <Stat
-                label="Net subscribers"
-                value={subsSeries.reduce((a, b) => a + b, 0).toLocaleString()}
-                series={subsSeries}
-                color="var(--status-speaking)"
-              />
+          <div className="flex flex-col">
+            {/* Views, likes and comments get real panels — they are the three
+                numbers the channel is actually judged on. */}
+            <ChannelTrends points={series} rangeDays={range} />
+
+            {/* Watch time and subscribers stay as sparkline tiles: still worth
+                a glance, but they are not what this view is for. */}
+            <div className="px-6 py-5 flex flex-col gap-5">
+              <div className="flex gap-8">
+                <Stat
+                  label="Watch time (min)"
+                  value={Math.round(watchSeries.reduce((a, b) => a + b, 0)).toLocaleString()}
+                  series={watchSeries}
+                />
+                <Stat
+                  label="Net subscribers"
+                  value={subsSeries.reduce((a, b) => a + b, 0).toLocaleString()}
+                  series={subsSeries}
+                  color="var(--accent-secondary)"
+                />
+              </div>
+              <p className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                Lifetime: {channel.viewCount.toLocaleString()} views across {channel.videoCount} videos.
+              </p>
             </div>
-            <p className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Lifetime: {channel.viewCount.toLocaleString()} views across {channel.videoCount} videos.
-            </p>
           </div>
         )}
 
