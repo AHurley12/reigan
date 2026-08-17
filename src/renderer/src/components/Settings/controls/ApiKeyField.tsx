@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Eye, EyeOff, Check } from 'lucide-react'
 import { useSettingsStore } from '../../../stores/settingsStore'
 import type { AppSettings } from '../../../../../shared/types'
+import { sanitizeCredential } from '../../../../../shared/credentials'
 
 interface Props {
   settingKey: keyof AppSettings
@@ -34,8 +35,12 @@ export function ApiKeyField({ settingKey, placeholder, masked = true }: Props) {
   useEffect(() => setValue(storedValue ?? ''), [storedValue])
 
   const handleSave = () => {
-    if (masked && value.trim() === '') return
-    set(settingKey, value as AppSettings[typeof settingKey])
+    // Sanitised here rather than at the point of use: this is the only place a
+    // human's clipboard reaches the credential, and every reader downstream
+    // would otherwise have to defend itself against the same stray quotes.
+    const cleaned = sanitizeCredential(value)
+    if (masked && cleaned === '') return
+    set(settingKey, cleaned as AppSettings[typeof settingKey])
     setSaved(true)
     if (masked) {
       // Clear the typed key out of renderer memory the moment it is committed,
