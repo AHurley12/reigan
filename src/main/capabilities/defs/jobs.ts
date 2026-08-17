@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { getCapability } from '../registry'
 import { CapabilityError, type AnyCapability } from '../types'
 import {
+  clearJobFailures,
   deleteJob,
   getJob,
   listJobs,
@@ -189,6 +190,10 @@ export const jobCapabilities: AnyCapability[] = [
       if (!job) throw new CapabilityError(`No job with id ${id}.`, 'not_found')
 
       setJobEnabled(id, true, null)
+      // Part of "clearing any auto-disabled state" in this capability's own
+      // description: the streak is what disabled the job, so it must not
+      // outlive the disable.
+      clearJobFailures(id)
       const next =
         job.scheduleKind === 'manual'
           ? null

@@ -164,6 +164,20 @@ export function setNextRun(id: string, nextRunAt: number | null): void {
   getDatabase().prepare('UPDATE jobs SET next_run_at = ? WHERE id = ?').run(nextRunAt, id)
 }
 
+/**
+ * Forgets the failure streak that auto-disabled a job.
+ *
+ * Without this, re-enabling is a trap: `consecutive_failures` survives, the next
+ * attempt is numbered streak+1, and if that already exceeds `max_retries` the
+ * first failure disables the job again instantly — no retries, and a notice
+ * claiming it "failed 6 times in a row" when it has failed once since the user
+ * intervened. Re-enabling is the user saying they fixed the cause, so the count
+ * of failures before the fix is no longer evidence about anything.
+ */
+export function clearJobFailures(id: string): void {
+  getDatabase().prepare('UPDATE jobs SET consecutive_failures = 0 WHERE id = ?').run(id)
+}
+
 export function recordJobOutcome(
   id: string,
   status: RunStatus,
