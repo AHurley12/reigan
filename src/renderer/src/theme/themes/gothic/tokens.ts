@@ -40,6 +40,16 @@ export const gothicTokens: ThemeTokens = {
     success: '#4A6656',
     gradient: 'linear-gradient(135deg, #6E1423 0%, #4A6656 100%)',
   },
+  // Crimson, verdigris, azure. The skin's own crimson (#6E1423) and verdigris
+  // (#4A6656) are wall colours — as marks they fall under the chroma floor and
+  // read as two greys, so these are lifted, saturated relatives of both. Azure
+  // is the third because gothic has no third hue of its own, and a cold blue is
+  // the one addition that stays in the crypt.
+  chart: {
+    series1: '#C73751',
+    series2: '#0BAA7C',
+    series3: '#197AE3',
+  },
   border: {
     subtle: 'rgba(173, 171, 163, 0.08)',
     strong: 'rgba(173, 171, 163, 0.16)',

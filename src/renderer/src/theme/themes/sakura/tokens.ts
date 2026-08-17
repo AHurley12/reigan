@@ -74,6 +74,14 @@ export const sakuraTokens: ThemeTokens = {
     success: '#7E9970',
     gradient: 'linear-gradient(135deg, #E39AA8 0%, #C4707E 100%)',
   },
+  // Rose, moss, wisteria — the skin's own three notes. This is the one triad
+  // that passed at a flat lightness: a magenta-leaning rose separates from moss
+  // under deuteranopia in a way an orange-red never does.
+  chart: {
+    series1: '#D8508F',
+    series2: '#42A228',
+    series3: '#936DE9',
+  },
   border: {
     subtle: 'rgba(232, 223, 214, 0.075)',
     strong: 'rgba(232, 223, 214, 0.15)',

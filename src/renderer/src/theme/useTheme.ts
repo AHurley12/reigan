@@ -1,6 +1,7 @@
 import { useSettingsStore } from '../stores/settingsStore'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { THEMES, DEFAULT_THEME_ID, isThemeId, type ThemeId } from './registry'
+import type { Theme } from './types'
 
 /**
  * Theme id is persisted through the existing settings store (same round-trip
@@ -14,7 +15,12 @@ export function useTheme() {
   const reducedMotion = useReducedMotion()
 
   const themeId: ThemeId = isThemeId(rawId) ? rawId : DEFAULT_THEME_ID
-  const theme = THEMES[themeId]
+  // Widened to the contract on purpose. `THEMES` is `satisfies`-typed, so its
+  // inferred union is the literal shape of each entry — and a consumer reading
+  // an optional part of the contract (`particles`, `watermark`, `frame`) would
+  // otherwise fail to compile the moment one theme omits it, which is exactly
+  // what "optional" is for.
+  const theme: Theme = THEMES[themeId]
 
   const setTheme = (id: ThemeId): void => {
     const html = document.documentElement

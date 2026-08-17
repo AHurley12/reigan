@@ -13,7 +13,7 @@ const SECRET_KEYS = new Set(['anthropicApiKey', 'deepgramApiKey', 'elevenLabsApi
 // field isn't exposed by default just because someone forgot to list it here.
 const EDITABLE_KEYS = [
   'japaneseLevel', 'showFurigana', 'showRomaji', 'voiceResponseMode', 'particleCount',
-  'voiceId', 'pushToTalk', 'ttsStability', 'ttsSimilarity', 'showOrbColumn', 'reducedMotion',
+  'voiceId', 'pushToTalk', 'ttsStability', 'ttsSimilarity', 'showOrbColumn', 'motion',
   'audioInputDeviceId', 'audioOutputDeviceId', 'personalityMode', 'unbridledModeAcknowledged',
   'avatarModelChoice', 'avatarCustomModelLabel', 'voiceOrbStyle',
 ] as const

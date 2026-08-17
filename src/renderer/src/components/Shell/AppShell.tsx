@@ -9,6 +9,7 @@ import { FilesPanel } from '../Files/FilesPanel'
 import { PerformancePanel } from '../Performance/PerformancePanel'
 import { AutomationsPanel } from '../Automations/AutomationsPanel'
 import { OrbColumn } from '../Orb/OrbColumn'
+import { RegionParticles } from '../../theme/particles/RegionParticles'
 import { ToastStack } from '../shared/Toast'
 import { ApprovalDialog } from '../Approvals/ApprovalDialog'
 import { useAppStore } from '../../stores/appStore'
@@ -120,7 +121,11 @@ export function AppShell() {
           at the moulding instead of squaring off behind it. */}
       <div className="flex flex-1 overflow-hidden gap-2.5 p-2.5">
         <NavBar />
-        <main className="ornate flex-1 overflow-hidden" style={{ backgroundColor: 'transparent' }}>
+        <main className="ornate particle-host flex-1 overflow-hidden" style={{ backgroundColor: 'transparent' }}>
+          {/* Sits on the module ground, beneath every module's own content —
+              see theme/particles/RegionParticles for why z-index does that
+              here and not on the full-viewport layer. */}
+          <RegionParticles region="main" />
           {renderModule()}
         </main>
         {showOrbColumn && <OrbColumn />}

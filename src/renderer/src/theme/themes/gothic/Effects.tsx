@@ -5,7 +5,6 @@ const TARGET_FRAME_MS = 1000 / 30 // gothic's motionProfile.targetFps
 const BAT_MIN_GAP_MS = 30_000
 const BAT_MAX_GAP_MS = 90_000
 const BAT_DURATION_MS = 8_000
-const ASH_COUNT = 26 // well under motionProfile.maxParticles (40)
 
 interface FogBlob {
   baseX: number // 0–1 of width
@@ -23,47 +22,23 @@ interface Bat {
   wobbleSeed: number
 }
 
-interface AshMote {
-  x0: number // 0–1, horizontal anchor
-  swayAmp: number // 0–1 fraction of width
-  swaySeed: number
-  cycleMs: number // time to drift the full screen height
-  startFrac: number // 0–1 initial phase into the cycle
-  size: number // px
-  ember: boolean // oxblood-tinted vs. silver ash
-}
-
-function makeAshMotes(): AshMote[] {
-  return Array.from({ length: ASH_COUNT }, () => ({
-    x0: Math.random(),
-    swayAmp: 0.01 + Math.random() * 0.02,
-    swaySeed: Math.random() * Math.PI * 2,
-    cycleMs: 22_000 + Math.random() * 16_000,
-    startFrac: Math.random(),
-    size: 0.8 + Math.random() * 1.6,
-    ember: Math.random() < 0.3,
-  }))
-}
-
-function drawAshMotes(ctx: CanvasRenderingContext2D, width: number, height: number, motes: AshMote[], elapsedMs: number): void {
-  for (const mote of motes) {
-    const progress = ((elapsedMs + mote.startFrac * mote.cycleMs) % mote.cycleMs) / mote.cycleMs
-    const y = (1.05 - progress * 1.1) * height
-    const x = (mote.x0 + Math.sin(elapsedMs * 0.0004 + mote.swaySeed) * mote.swayAmp) * width
-    const fade = Math.sin(progress * Math.PI) // fades in/out at top and bottom of travel
-    ctx.beginPath()
-    ctx.fillStyle = mote.ember ? `rgba(158, 42, 61, ${0.5 * fade})` : `rgba(173, 171, 163, ${0.35 * fade})`
-    ctx.arc(x, y, mote.size, 0, Math.PI * 2)
-    ctx.fill()
-  }
-}
+/*
+ * The rising ash/ember motes that used to live here are gone. They were the
+ * one thing in this layer that read as *particles* rather than as atmosphere,
+ * and their travel was bottom-to-top — embers coming off a fire, which is a
+ * warm upward image and the opposite of what a mourning skin wants. They now
+ * fall, as grey dust and black soot, inside the rail and the module area. See
+ * field.ts.
+ *
+ * What is left is what genuinely is whole-window weather: fog low in the frame,
+ * a vignette, and the occasional distant bat.
+ */
 
 function drawFrame(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   fog: FogBlob[],
-  motes: AshMote[],
   elapsedMs: number,
   bat: Bat | null
 ): void {
@@ -81,8 +56,6 @@ function drawFrame(
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, width, height)
   }
-
-  drawAshMotes(ctx, width, height, motes, elapsedMs)
 
   // Vignette
   const vignette = ctx.createRadialGradient(
@@ -117,10 +90,11 @@ function drawFrame(
 }
 
 /**
- * Sepulchral ambient layer: drifting low fog, rising ash/ember motes, and an
- * occasional distant bat crossing. One RAF loop for the whole thing. Static
- * ornament (silver linings, filigree, the memento-mori watermark) is CSS —
- * see ornament.css — so it never costs a frame.
+ * Sepulchral ambient layer: drifting low fog, a vignette, and an occasional
+ * distant bat crossing. One RAF loop for the whole thing. Static ornament
+ * (silver linings, filigree, the memento-mori watermark) is CSS — see
+ * ornament.css — so it never costs a frame. The theme's dust and soot are a
+ * separate, panel-scoped field (field.ts).
  */
 export default function GothicEffects({ reducedMotion, paused }: EffectsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -130,7 +104,6 @@ export default function GothicEffects({ reducedMotion, paused }: EffectsProps) {
   const lastDrawRef = useRef(0)
   const batRef = useRef<Bat | null>(null)
   const batTimeoutRef = useRef<number | null>(null)
-  const motesRef = useRef<AshMote[]>(makeAshMotes())
   const fogRef = useRef<FogBlob[]>([
     { baseX: 0.2, baseY: 0.85, radius: 0.32, speed: 0.00004, phase: 0, color: 'rgba(20, 22, 28, 0.55)' },
     { baseX: 0.7, baseY: 0.92, radius: 0.38, speed: 0.00003, phase: 2.1, color: 'rgba(16, 17, 22, 0.5)' },
@@ -151,8 +124,8 @@ export default function GothicEffects({ reducedMotion, paused }: EffectsProps) {
     window.addEventListener('resize', resize)
 
     if (reducedMotion) {
-      // Static but complete composition — no RAF loop, no bat, motes frozen mid-drift.
-      drawFrame(ctx, canvas.width, canvas.height, fogRef.current, motesRef.current, 0, null)
+      // Static but complete composition — no RAF loop, no bat, fog at rest.
+      drawFrame(ctx, canvas.width, canvas.height, fogRef.current, 0, null)
       return () => window.removeEventListener('resize', resize)
     }
 
@@ -186,7 +159,7 @@ export default function GothicEffects({ reducedMotion, paused }: EffectsProps) {
 
       if (now - lastDrawRef.current >= TARGET_FRAME_MS) {
         lastDrawRef.current = now
-        drawFrame(ctx, canvas.width, canvas.height, fogRef.current, motesRef.current, elapsedRef.current, batRef.current)
+        drawFrame(ctx, canvas.width, canvas.height, fogRef.current, elapsedRef.current, batRef.current)
       }
 
       rafRef.current = requestAnimationFrame(tick)

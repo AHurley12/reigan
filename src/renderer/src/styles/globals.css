@@ -229,6 +229,38 @@ body, #root {
   border-image-source: var(--theme-frame-focus);
 }
 
+/* A box that may carry the active theme's particle field (see
+   theme/particles/RegionParticles). Structural, like .rule-ornate above: the
+   theme decides what falls, this decides where it may land.
+
+   Both declarations are load-bearing. `isolation` forces a stacking context,
+   which is the only thing that makes the field's `z-index: -1` mean "after this
+   box's own background, before its children" rather than "behind the nearest
+   ancestor that happens to have one" — without it the canvas disappears under
+   the rail's opaque surface. `position` gives the canvas its containing block.
+
+   Deliberately no `overflow: hidden`. The field is inset to its host and cannot
+   spill, so clipping would buy nothing — and it would cost the nav rail its
+   hover tooltips, which are anchored at `left-full` and have to cross the
+   gutter to be read. The canvas takes `border-radius: inherit` instead, which
+   rounds the field to the panel without clipping anything else.
+
+   A host that creates a stacking context also traps its children's z-index, so
+   any host whose content must paint over a *later* sibling has to say so —
+   see .particle-host-raised. */
+.particle-host {
+  position: relative;
+  isolation: isolate;
+}
+
+/* For a host that sits earlier in the DOM than a panel its children overflow
+   into. The nav rail is the case: its tooltips open rightwards over <main>,
+   and without a positive z-index the rail's whole stacking context — tooltips
+   included — would paint underneath it. */
+.particle-host-raised {
+  z-index: 1;
+}
+
 .grained {
   background-image: var(--effect-grain-image);
   background-repeat: repeat;

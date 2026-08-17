@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AppSettings } from '../../../shared/types'
 import { DEFAULT_SETTINGS } from '../../../shared/constants'
+import { normalizeMotion } from '../hooks/motionPreference'
 
 /** Credential metadata. Never the value — see main's getSecretPreviews(). */
 export interface SecretPreview {
@@ -51,6 +52,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             ;(parsed as any)[key] = raw
           }
         }
+        // `reducedMotion: boolean` became `motion: MotionPreference`; rows
+        // written by an older build still carry the boolean.
+        const legacy = parsed as Partial<AppSettings> & { reducedMotion?: unknown }
+        parsed.motion = normalizeMotion(legacy.motion, legacy.reducedMotion)
+        delete legacy.reducedMotion
         set((s) => ({ settings: { ...s.settings, ...parsed } }))
       }
       await get().refreshSecretPreviews()

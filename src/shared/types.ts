@@ -3,6 +3,17 @@ export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'er
 export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'performance' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
 export type PersonalityMode = 'standard' | 'unbridled';
+/**
+ * How much motion the app is allowed. `system` follows the OS accessibility
+ * preference; the other two are deliberate user overrides in *either*
+ * direction.
+ *
+ * It replaces a `reducedMotion` boolean that could only ever add reduction —
+ * with the OS preference on, the in-app control did nothing at all and there
+ * was no way to see any animation in the app. An accessibility default should
+ * be respected out of the box and still be overridable by the person using it.
+ */
+export type MotionPreference = 'system' | 'reduce' | 'full';
 
 // ── Chat ──
 export interface ChatMessage {
@@ -55,7 +66,7 @@ export interface AppSettings {
   googleClientId: string;
   googleClientSecret: string;
   showOrbColumn: boolean;
-  reducedMotion: boolean;
+  motion: MotionPreference;
   audioInputDeviceId: string;
   audioOutputDeviceId: string;
   personalityMode: PersonalityMode;
@@ -435,6 +446,11 @@ export interface YtSeriesPoint {
   views: number;
   watchTimeMinutes: number;
   netSubs: number;
+  /** Likes given on that day — a daily figure, not the lifetime running total
+      carried by YtVideoSummary.likeCount. */
+  likes: number;
+  /** Comments posted on that day, likewise daily rather than cumulative. */
+  comments: number;
 }
 
 export type YtPerformanceTier = 'top' | 'solid' | 'underperforming' | 'dormant';

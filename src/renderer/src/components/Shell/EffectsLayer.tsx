@@ -1,29 +1,10 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense } from 'react'
 import { useTheme } from '../../theme/useTheme'
 import { useAppStore } from '../../stores/appStore'
-
+import { useWindowPaused } from '../../hooks/useWindowPaused'
 
 // Grain is not an overlay — it's a background layer applied via
 // --effect-grain-image (see theme/grain.ts), so content always paints above it.
-
-function useWindowPaused(): boolean {
-  const [paused, setPaused] = useState(() => typeof document !== 'undefined' && document.visibilityState === 'hidden')
-
-  useEffect(() => {
-    const pause = () => setPaused(true)
-    const resume = () => setPaused(document.visibilityState === 'hidden')
-    window.addEventListener('blur', pause)
-    window.addEventListener('focus', resume)
-    document.addEventListener('visibilitychange', resume)
-    return () => {
-      window.removeEventListener('blur', pause)
-      window.removeEventListener('focus', resume)
-      document.removeEventListener('visibilitychange', resume)
-    }
-  }, [])
-
-  return paused
-}
 
 /**
  * Single fixed, non-interactive layer the active theme's ambient effects

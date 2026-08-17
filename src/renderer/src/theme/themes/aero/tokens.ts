@@ -61,6 +61,15 @@ export const aeroTokens: ThemeTokens = {
     gradient:
       'linear-gradient(180deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.48) 45%, #16A8D8 45.01%, #0B6E96 100%)',
   },
+  // Aqua, lime, coral. The only light skin, so these run *darker* than the
+  // three dark skins' triads rather than lighter — contrast here is measured
+  // downward against a near-white chart surface. Lime is the constrained slot:
+  // any brighter and it drops under 3:1.
+  chart: {
+    series1: '#0275A3',
+    series2: '#5A8B00',
+    series3: '#AC1C0F',
+  },
   border: {
     subtle: 'rgba(6, 62, 86, 0.14)',
     strong: 'rgba(6, 62, 86, 0.28)',

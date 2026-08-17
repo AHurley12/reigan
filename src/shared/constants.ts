@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = {
   googleClientId: '',
   googleClientSecret: '',
   showOrbColumn: true,
-  reducedMotion: false,
+  motion: 'system' as const,
   audioInputDeviceId: 'default',
   audioOutputDeviceId: 'default',
   personalityMode: 'standard' as const,

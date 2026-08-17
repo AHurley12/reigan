@@ -135,6 +135,9 @@ cost: **6–8.7ms** to apply (budget 100ms).
 | `accent.danger` | `--accent-danger` | `#E5484D` | `#9E2A3D` | `#D9452F` | `#DC4B4B` |
 | `accent.success` | `--accent-success` | `#23A18C` | `#4A6656` | `#8FD400` | `#7E9970` |
 | `accent.gradient` | `--accent-gradient` | 135° shu→gold | 135° oxblood→verdigris | 180° gloss, hard terminator | 135° lantern rose→ember |
+| `chart.series1` | `--chart-series1` | `#C83D22` | `#C73751` | `#0275A3` | `#D8508F` |
+| `chart.series2` | `--chart-series2` | `#BA8C01` | `#0BAA7C` | `#5A8B00` | `#42A228` |
+| `chart.series3` | `--chart-series3` | `#07957C` | `#197AE3` | `#AC1C0F` | `#936DE9` |
 | `border.subtle` | `--border-subtle` | `rgba(237,230,214,0.07)` | `rgba(173,171,163,0.08)` | `rgba(6,62,86,0.14)` | `rgba(232,223,214,0.075)` |
 | `border.strong` | `--border-strong` | `rgba(237,230,214,0.14)` | `rgba(173,171,163,0.16)` | `rgba(6,62,86,0.28)` | `rgba(232,223,214,0.15)` |
 | `border.focus` | `--border-focus` | `#23A18C` | `#C1495B` | `#16A8D8` | `#C4707E` |
@@ -156,6 +159,27 @@ cost: **6–8.7ms** to apply (budget 100ms).
 | `effect.glow` | `--effect-glow` | shu glow | oxblood glow | aqua glow | rose glow |
 | `effect.noiseOpacity` | `--effect-noise-opacity` | `0` | `0.04` | `0` | `0.035` |
 | `effect.texture` | `--effect-texture` | `none` | `none` | `none` | `none` |
+
+**Chart series are measured, not chosen.** `chart.series1..3` are the categorical
+slots a chart assigns *by identity* — series 1 is always the same metric, so
+changing a filter or a date range never repaints the survivors. They are not
+aliases of `accent.*` and must never be replaced by `--status-*`: a status colour
+asserts that a series is healthy or failing, which the chart never claimed, and
+three accents picked to sit under body text routinely collapse into each other
+under colour-vision deficiency.
+
+Every triad above passes five computed checks against **that skin's own chart
+surface** (`surface.raised`): the OKLCH lightness band, a chroma floor, simulated
+protan/deutan/tritan separation over all pairs, unsimulated separation, and WCAG
+contrast. The trick that makes them pass is a deliberate **lightness stagger**
+between the warm slots — CVD flattens hue but leaves lightness intact, so a red
+and a gold at equal lightness are one colour to a deuteranope. `aero` runs darker
+than the rest because it is the only light skin and its contrast is measured
+downward.
+
+If you change a value here, re-run the check rather than eyeballing it; a triad
+that "looks fine" is exactly how the failing ones got written. The renderer that
+consumes these is `components/Automations/ChannelTrends.tsx`.
 
 **`ambient.layerZ` is load-bearing.** `0` puts the ambient layer above in-flow
 content — right for a sparse dark overlay (fog, embers). `-1` puts it behind
@@ -298,14 +322,50 @@ skin's `tokens.ts`**, not from `globals.css`; a `watermark`; a `frame`; custom
 
 ## 6. Ambient layer performance contract
 
-Applies to every skin's `Effects` component.
+A skin has two ambient surfaces and they answer different questions.
+
+| | `Effects` | `particles` |
+|---|---|---|
+| Where | one full-viewport fixed layer | inside the nav rail and `<main>` |
+| Stacking | `ambient.layerZ`: `0` over content, `-1` under it | always under the host's children, over its background |
+| Owns | canvas, RAF, resize | nothing — the host owns all lifecycle |
+| Good for | weather over the window: fog, mist, vignette, a ground | particles that belong *on* a panel |
+
+`layerZ: -1` only works for a skin whose surfaces are transparent (aero), since
+any opaque panel hides it. A region field has no such requirement: a `z-index:
+-1` canvas inside a `.particle-host` (which forces a stacking context) paints
+after the host's own background and before every child, so it lands on an opaque
+rail without touching the palette. That is the whole reason the surface exists.
+
+Two rules come with it. A `.particle-host` must not clip — the rail's tooltips
+open across the gutter — so the canvas rounds itself with `border-radius:
+inherit`. And a host that creates a stacking context traps its children's
+z-index, so a host whose content overflows onto a *later* sibling needs
+`.particle-host-raised` or its tooltips paint underneath.
+
+Fields never schedule themselves. `RegionParticles` owns DPR, measurement
+(`ResizeObserver`, because these boxes also change when the orb column toggles),
+the reduced-motion still frame and the blur pause; `particles/driver.ts` runs
+**one** RAF for every field on screen and stops itself when the last unsubscribes.
+Volume is derived from host area against `motionProfile.maxParticles`
+(`countForArea`/`regionBudget`), so a maximised window carries more than a narrow
+one and the rail always carries less than the chat, with no theme hardcoding a
+number a resize invalidates.
+
+### Applies to every skin's `Effects` component.
 
 - Animate **only** `transform` and `opacity`.
 - `will-change` on animating children only, never on the full-viewport root.
 - Fixed node pool; never create/destroy per particle.
-- `prefers-reduced-motion` **and** the in-app setting freeze the layer to a
-  *static composition* (`animation-play-state: paused` with negative delays), not
-  to a hidden or reset one.
+- Reduced motion freezes the layer to a *static composition*
+  (`animation-play-state: paused` with negative delays), not to a hidden or
+  reset one.
+- Whether motion is reduced is the `motion` setting resolved against
+  `prefers-reduced-motion` — see `hooks/motionPreference.ts`. It is a tri-state
+  (`system` / `reduce` / `full`), **not** a boolean OR-ed with the media query:
+  that older shape could only ever add reduction, so on a machine with "show
+  animations" turned off every ambient layer in the app was permanently frozen
+  and the in-app control did nothing.
 - Pause entirely when the window is blurred (`motionProfile.pauseOnBlur`).
 
 Measured for `aero` (34 bubbles, 2 caustics, 1 bloom, settings panel open over
@@ -321,6 +381,35 @@ non-composited animation — don't chase it.
 ---
 
 ## 7. Change log
+
+- **2026-08-14** — `reducedMotion: boolean` became `motion: MotionPreference`
+  (`system` / `reduce` / `full`), with the resolution split into a tested pure
+  function. The old setting was OR-ed with `prefers-reduced-motion`, so it could
+  only ever *add* reduction: on a machine with Windows' "show animations" off,
+  every ambient layer was frozen with no in-app way to run it and a toggle that
+  visibly did nothing.
+
+- **2026-08-14** — Region particle fields added (`theme/particles/`), a second
+  ambient surface that paints inside the nav rail and `<main>` beneath their
+  content. `shingan` gets the field it never had: orange discharge that runs
+  along the panel seams rather than across the middle, so the frame reads as
+  energised instead of as weather. `gothic`'s ash motes stopped rising over the
+  window and became grey dust and black soot falling inside the panels, leaving
+  only genuine atmosphere (fog, vignette, bat) in its `Effects`. `sakura`'s
+  petals moved wholesale to a field so they fall *behind* the UI, keeping the
+  activity swirl — now aimed at the module area's own centre — and leaving the
+  mist behind at 30fps, since that rate existed for the petals. `aero` was left
+  alone: its bubbles already rise behind every surface on the compositor, and
+  re-cutting them as canvases would have put them on the main thread to fix a
+  stacking problem that skin does not have.
+
+  Two things were built and cut after looking at them. Shingan's arcs originally
+  jumped corner to corner a sixth of the time; side by side with the seam runs
+  it was plainly wrong twice over — a bright diagonal through the column of text
+  the panel exists to hold, and generic lightning in place of a specific idea.
+  Gothic's soot was first drawn true black with a lit rim, which on `#0A0B0F`
+  rendered every flake as a tiny hollow wireframe box; it is warm charcoal now,
+  and what separates it from the dust is material, not blackness.
 
 - **2026-08-11** — `sakura` ("Yozakura") added, completing the three alternates
   the original theme-engine spec called for. Built as night hanami rather than

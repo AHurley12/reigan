@@ -20,10 +20,14 @@ export const THEMES = {
     description: 'Hanko seal, ink-void black, shu vermillion — the default eye.',
     colorScheme: 'dark',
     tokens: shinganTokens,
-    motionProfile: { maxParticles: 0, targetFps: 60, pauseOnBlur: true },
+    // 26 is the spark pool the region field is written against (arcs are
+    // scheduled separately and never number more than four); 60fps because a
+    // discharge lives ~200ms and at 30 it would read as three stills.
+    motionProfile: { maxParticles: 26, targetFps: 60, pauseOnBlur: true },
     // Brush-stroke ink: each glyph lands with a short vertical settle.
     textReveal: { animation: 'reveal-ink', unit: 'char', durationMs: 200, staggerMs: 9, maxDelayMs: 160 },
     Effects: lazy(() => import('./themes/shingan/Effects')),
+    particles: () => import('./themes/shingan/field'),
     previewGradient: 'linear-gradient(135deg, #D8432A 0%, #C9A227 100%)',
   },
   gothic: {
@@ -38,6 +42,7 @@ export const THEMES = {
     watermark: roseWindow,
     frame: ornateFrame,
     Effects: lazy(() => import('./themes/gothic/Effects')),
+    particles: () => import('./themes/gothic/field'),
     previewGradient: 'linear-gradient(135deg, #6E1423 0%, #3B4252 100%)',
   },
   aero: {
@@ -54,6 +59,12 @@ export const THEMES = {
     // lighter than either the ink settle or the chisel.
     textReveal: { animation: 'reveal-gloss', unit: 'char', durationMs: 240, staggerMs: 11, maxDelayMs: 190 },
     Effects: lazy(() => import('./themes/aero/Effects')),
+    // No `particles` entry, and deliberately so. Aero's bubbles already rise
+    // behind every surface — its ambient layer *is* the ground (layerZ -1) and
+    // its panels are glass — and they run entirely on the compositor with no
+    // RAF loop at all. Re-cutting them as per-region canvases would put the
+    // same bubbles on the main thread twice over to fix a stacking problem this
+    // skin does not have.
     previewGradient: 'linear-gradient(135deg, #BFE9FF 0%, #16A8D8 55%, #063E56 100%)',
   },
   sakura: {
@@ -71,6 +82,7 @@ export const THEMES = {
     textReveal: { animation: 'reveal-settle', unit: 'char', durationMs: 300, staggerMs: 12, maxDelayMs: 200 },
     watermark: inkBranch,
     Effects: lazy(() => import('./themes/sakura/Effects')),
+    particles: () => import('./themes/sakura/field'),
     previewGradient: 'linear-gradient(135deg, #1E1B24 0%, #C4707E 55%, #E39AA8 100%)',
   },
 } satisfies Record<string, Theme>

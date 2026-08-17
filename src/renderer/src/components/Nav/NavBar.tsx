@@ -4,6 +4,7 @@ import {
   Calendar, Zap, Code, Settings, Gauge
 } from 'lucide-react'
 import { NavItem } from './NavItem'
+import { RegionParticles } from '../../theme/particles/RegionParticles'
 import { useAppStore } from '../../stores/appStore'
 import { useJobAlertStore } from '../../stores/jobAlertStore'
 import { NAV_ITEMS } from '../../../../shared/constants'
@@ -34,12 +35,15 @@ export function NavBar() {
       // py-4 rather than py-2: the frame's corner ornament runs 14px inward,
       // and at the old padding the first and last buttons sat inside it —
       // an active item's tinted background then collided with the moulding.
-      className="ornate flex flex-col items-center py-4 px-2 shrink-0"
+      className="ornate particle-host particle-host-raised flex flex-col items-center py-4 px-2 shrink-0"
       style={{
         width: 'var(--nav-width)',
         background: 'var(--bg-surface)',
       }}
     >
+      {/* Paints on the rail's own surface, under every button below it. */}
+      <RegionParticles region="nav" />
+
       {/* Nav items */}
       <div className="flex flex-col gap-1 w-full flex-1">
         {NAV_ITEMS.map((item, i) => (
