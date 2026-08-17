@@ -214,12 +214,18 @@ export function YouTubeView() {
     })
   }, [load])
 
-  const sync = async () => {
+  /**
+   * `full` re-fetches a year of history rather than the last few days. Needed
+   * after daily likes and comments were added to the sync: the incremental pass
+   * only revisits the overlap window, so without this the two engagement panels
+   * stay empty for every day the channel had already synced.
+   */
+  const sync = async (full = false) => {
     setSyncing(true)
     try {
-      const r = await ipc.capabilities.invoke('youtube.sync', {})
+      const r = await ipc.capabilities.invoke('youtube.sync', full ? { full: true } : {})
       if (r.ok) {
-        pushToast('Channel synced.', 'success')
+        pushToast(full ? 'Full history synced.' : 'Channel synced.', 'success')
         await load()
       } else {
         pushToast(r.error ?? 'Sync failed.', 'error')
@@ -272,7 +278,7 @@ export function YouTubeView() {
           your uploads playlist rather than searching, so a full sync costs roughly 10 of your 10,000
           daily API units.
         </p>
-        <Button size="sm" variant="primary" onClick={sync} disabled={syncing}>
+        <Button size="sm" variant="primary" onClick={() => void sync()} disabled={syncing}>
           {syncing ? 'Syncing…' : 'Sync now'}
         </Button>
       </div>
@@ -297,7 +303,7 @@ export function YouTubeView() {
         </div>
         <div className="flex items-start gap-4 shrink-0">
           {quota && <QuotaMeter quota={quota} />}
-          <Button size="sm" variant="ghost" onClick={sync} disabled={syncing}>
+          <Button size="sm" variant="ghost" onClick={() => void sync()} disabled={syncing}>
             <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Syncing' : 'Sync'}
           </Button>
@@ -346,7 +352,12 @@ export function YouTubeView() {
           <div className="flex flex-col">
             {/* Views, likes and comments get real panels — they are the three
                 numbers the channel is actually judged on. */}
-            <ChannelTrends points={series} rangeDays={range} />
+            <ChannelTrends
+              points={series}
+              rangeDays={range}
+              onBackfill={() => void sync(true)}
+              backfilling={syncing}
+            />
 
             {/* Watch time and subscribers stay as sparkline tiles: still worth
                 a glance, but they are not what this view is for. */}

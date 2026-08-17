@@ -155,12 +155,16 @@ function Panel({
   width,
   hovered,
   gradientId,
+  onBackfill,
+  backfilling,
 }: {
   def: SeriesDef
   values: number[]
   width: number
   hovered: number | null
   gradientId: string
+  onBackfill?: () => void
+  backfilling?: boolean
 }) {
   const total = values.reduce((a, b) => a + b, 0)
   const peak = Math.max(...values, 0)
@@ -371,7 +375,7 @@ function TrendsTable({ points }: { points: YtSeriesPoint[] }) {
   )
 }
 
-export function ChannelTrends({ points, rangeDays }: Props) {
+export function ChannelTrends({ points, rangeDays, onBackfill, backfilling }: Props) {
   const [probeRef, width] = useMeasuredWidth<HTMLDivElement>()
   const [hovered, setHovered] = useState<number | null>(null)
   const [asTable, setAsTable] = useState(false)
@@ -478,6 +482,8 @@ export function ChannelTrends({ points, rangeDays }: Props) {
               width={width}
               hovered={hovered}
               gradientId={`${baseId}-${def.key}`}
+              onBackfill={onBackfill}
+              backfilling={backfilling}
             />
           ))}
 
