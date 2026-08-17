@@ -5,6 +5,7 @@ import { syncChannel } from '../../youtube/sync'
 import { listFindings, runCatalogAudit, type AuditFinding } from '../../youtube/audit'
 import { getQuotaStatus } from '../../youtube/quota'
 import {
+  deleteVideoFromCache,
   getChannel,
   getChannelSeries,
   getVideo,
@@ -24,6 +25,15 @@ const listVideosSchema = z.object({
   search: z.string().optional().describe('Substring match on the title'),
   sortBy: z.enum(['views', 'published', 'recentViews', 'likes', 'comments']).optional(),
   limit: z.number().int().min(1).max(200).optional(),
+})
+
+const deleteVideoSchema = z.object({
+  videoId: z
+    .string()
+    .describe(
+      'The YouTube video id. Resolve a title to an id with youtube.listVideos first and pass the id — ' +
+        'never guess one from a title, because the deletion cannot be undone if the match is wrong.'
+    ),
 })
 
 const updateMetadataSchema = z.object({
@@ -312,5 +322,84 @@ export const youtubeCapabilities: AnyCapability[] = [
     },
     formatResult: (r: { videoId: string; updated: string[] }) =>
       `Updated ${r.updated.join(', ')} on video ${r.videoId}.`,
+  },
+
+  {
+    id: 'youtube.deleteVideo',
+    title: 'Delete a video',
+    description:
+      'Permanently delete a video from YouTube. This cannot be undone — there is no trash and no restore, ' +
+      'and the video\'s comments and analytics history go with it. Takes a video id, never a title: call ' +
+      'youtube.listVideos first to resolve one, and show the user which video you matched before proposing ' +
+      'the deletion. Costs 51 quota units.',
+    risk: 'destructive',
+    requiresGoogle: true,
+    schema: deleteVideoSchema,
+    approval: {
+      summary: (args: z.infer<typeof deleteVideoSchema>) => {
+        const video = getVideo(args.videoId)
+        return (
+          `Permanently delete "${video?.title ?? args.videoId}" from YouTube — ` +
+          'this cannot be undone, and its comments and analytics go with it'
+        )
+      },
+      diff: (args: z.infer<typeof deleteVideoSchema>) => {
+        const video = getVideo(args.videoId)
+        if (!video) return null
+
+        const published = video.publishedAt
+          ? new Date(video.publishedAt).toISOString().slice(0, 10)
+          : 'unknown date'
+        return {
+          subject: video.title,
+          // `after: null` renders as a removal rather than a change, which is
+          // the distinction that matters on a card the user cannot take back.
+          changes: [
+            {
+              field: 'video',
+              before: `${video.title} — ${video.viewCount.toLocaleString()} views, published ${published}`,
+              after: null,
+            },
+          ],
+        }
+      },
+    },
+    handler: async (args: z.infer<typeof deleteVideoSchema>) => {
+      const { data } = getYouTubeClients()
+
+      // The approval card was rendered from the local cache, which can be
+      // stale. Re-read the live title and refuse on any mismatch: the failure
+      // being guarded against is the user approving "delete X" and losing Y,
+      // and one quota unit is a trivial price for making that impossible.
+      const current = await meteredCall('videos.list', () =>
+        data.videos.list({ part: ['snippet'], id: [args.videoId] })
+      )
+      const liveTitle = current.data.items?.[0]?.snippet?.title
+      if (liveTitle === undefined) {
+        throw new CapabilityError(
+          `Video ${args.videoId} was not found on YouTube — it may already be deleted.`,
+          'not_found'
+        )
+      }
+
+      const cached = getVideo(args.videoId)
+      if (cached && cached.title !== liveTitle) {
+        throw new CapabilityError(
+          `Refusing to delete ${args.videoId}: the approval showed "${cached.title}" but YouTube now ` +
+            `calls it "${liveTitle}". Run a sync so you are deciding about the right video, then try again.`,
+          'handler_failed'
+        )
+      }
+
+      await meteredCall('videos.delete', () => data.videos.delete({ id: args.videoId }))
+
+      // Only after YouTube confirms. Dropping the cache row first would leave
+      // the app unable to name a video that still exists if the delete failed.
+      deleteVideoFromCache(args.videoId)
+
+      return { videoId: args.videoId, title: liveTitle }
+    },
+    formatResult: (r: { videoId: string; title: string }) =>
+      `Deleted "${r.title}" (${r.videoId}) from YouTube. This cannot be undone.`,
   },
 ]

@@ -176,6 +176,27 @@ export function getVideo(id: string): VideoSummary | null {
   return listVideos().find((v) => v.id === id) ?? null
 }
 
+/**
+ * Drops a video and its analytics history from the local cache.
+ *
+ * `yt_daily_stats` and `yt_traffic_sources` key off `video_id` but declare no
+ * foreign key to `yt_videos`, so nothing cascades — deleting only the parent
+ * row would leave stats behind that no longer belong to any video the app can
+ * name. Wrapped in a transaction so a failure part-way cannot produce exactly
+ * the orphan state this exists to avoid.
+ *
+ * Local only. Callers that also intend to delete the video on YouTube must do
+ * that first: a cache row is recoverable by re-syncing, a YouTube video is not.
+ */
+export function deleteVideoFromCache(id: string): void {
+  const db = getDatabase()
+  db.transaction(() => {
+    db.prepare('DELETE FROM yt_traffic_sources WHERE video_id = ?').run(id)
+    db.prepare('DELETE FROM yt_daily_stats WHERE video_id = ?').run(id)
+    db.prepare('DELETE FROM yt_videos WHERE id = ?').run(id)
+  })()
+}
+
 export interface VideoAnalytics {
   videoId: string
   title: string

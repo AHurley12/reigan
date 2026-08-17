@@ -23,6 +23,7 @@ export const QUOTA_COSTS = {
   'playlistItems.list': 1,
   'videos.list': 1,
   'videos.update': 50,
+  'videos.delete': 50,
   'thumbnails.set': 50,
   /** Never used — listed so the cost is visible next to the alternative. */
   'search.list': 100,
