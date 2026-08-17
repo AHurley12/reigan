@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getDatabase } from '../../db/database'
 import { decryptSecret, encryptSecret } from '../../db/secrets'
-import { recordDevToolsError } from '../errorLog'
+import { recordAppError } from '../../errors/errorLog'
 
 /**
  * Snippet & config vault.
@@ -211,8 +211,8 @@ export function searchSnippets(query: string, limit = 25): Snippet[] {
     // Recorded as a warning because the fallback searches title and
     // description only — a body match the user expected simply will not
     // appear, and the results look complete either way.
-    recordDevToolsError({
-      feature: 'vault',
+    recordAppError({
+      source: 'vault',
       operation: 'searchSnippets',
       error: err,
       severity: 'warning',

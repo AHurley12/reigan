@@ -3,6 +3,7 @@ import { getDatabase } from '../db/database'
 import { CapabilityError, type CapabilityContext } from '../capabilities/types'
 import { analyticsCall, getYouTubeClients, isoDate, meteredCall, parseDuration } from './api'
 import { assertBudget, getQuotaStatus } from './quota'
+import { recordAppError } from '../errors/errorLog'
 
 /**
  * Channel sync.
@@ -189,14 +190,15 @@ export async function syncChannel(
   const upsertStat = db.prepare(
     `INSERT INTO yt_daily_stats
        (video_id, date, views, watch_time_minutes, avg_view_duration_s, avg_view_percentage,
-        subs_gained, subs_lost, impressions, ctr)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        subs_gained, subs_lost, impressions, ctr, likes, comments)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(video_id, date) DO UPDATE SET
        views = excluded.views, watch_time_minutes = excluded.watch_time_minutes,
        avg_view_duration_s = excluded.avg_view_duration_s,
        avg_view_percentage = excluded.avg_view_percentage,
        subs_gained = excluded.subs_gained, subs_lost = excluded.subs_lost,
-       impressions = excluded.impressions, ctr = excluded.ctr`
+       impressions = excluded.impressions, ctr = excluded.ctr,
+       likes = excluded.likes, comments = excluded.comments`
   )
 
   const upsertTraffic = db.prepare(
@@ -256,9 +258,14 @@ async function syncVideoDailyStats(
       startDate,
       endDate,
       dimensions: 'day',
+      // `likes` and `comments` are appended rather than inserted: the response's
+      // column order mirrors this string, and the row is destructured
+      // positionally below. Adding to the end leaves every existing index alone.
+      // They belong to the same core metric group as the rest, so this stays one
+      // request — engagement costs no extra Analytics call.
       metrics:
         'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,' +
-        'subscribersGained,subscribersLost',
+        'subscribersGained,subscribersLost,likes,comments',
       filters: `video==${videoId}`,
     })
   )
@@ -273,9 +280,8 @@ async function syncVideoDailyStats(
 
   const write = db.transaction(() => {
     for (const row of rows) {
-      const [date, views, minutes, avgDuration, avgPercentage, gained, lost] = row as [
-        string, number, number, number, number, number, number,
-      ]
+      const [date, views, minutes, avgDuration, avgPercentage, gained, lost, likes, comments] =
+        row as [string, number, number, number, number, number, number, number, number]
       const imp = impressions.get(date)
       upsert.run(
         videoId,
@@ -287,7 +293,9 @@ async function syncVideoDailyStats(
         gained ?? 0,
         lost ?? 0,
         imp?.impressions ?? 0,
-        imp?.ctr ?? 0
+        imp?.ctr ?? 0,
+        likes ?? 0,
+        comments ?? 0
       )
     }
   })
@@ -304,21 +312,50 @@ async function fetchImpressions(
 ): Promise<Map<string, { impressions: number; ctr: number }>> {
   const map = new Map<string, { impressions: number; ctr: number }>()
   try {
-    const res = await analytics.reports.query({
-      ids: 'channel==MINE',
-      startDate,
-      endDate,
-      dimensions: 'day',
-      metrics: 'impressions,impressionClickThroughRate',
-      filters: `video==${videoId}`,
-    })
+    // Routed through analyticsCall like its two siblings above and below. Going
+    // direct meant this was the one analytics call in the file where an expired
+    // or revoked grant never reached handleInvalidGrant, so the account was
+    // never marked disconnected and the user was never prompted to reconnect.
+    const res = await analyticsCall(`impressions for ${videoId}`, () =>
+      analytics.reports.query({
+        ids: 'channel==MINE',
+        startDate,
+        endDate,
+        dimensions: 'day',
+        metrics: 'impressions,impressionClickThroughRate',
+        filters: `video==${videoId}`,
+      })
+    )
     for (const row of res.data.rows ?? []) {
       const [date, impressions, ctr] = row as [string, number, number]
       map.set(date, { impressions: impressions ?? 0, ctr: ctr ?? 0 })
     }
-  } catch {
+  } catch (err) {
+    // A dead grant is not a missing metric, and the difference decides whether
+    // the sync may keep going. Swallowing it would report success for a channel
+    // the app can no longer read, write zeroed impressions over good rows, and
+    // repeat the failed round trip once per remaining video. Let it out.
+    if (err instanceof CapabilityError && err.code === 'not_connected') throw err
+
     // Impression metrics are not available for every channel or date range.
     // Their absence weakens one audit finding; it must not fail the sync.
+    //
+    // Recorded rather than merely swallowed: this is the exact shape of failure
+    // the log exists for. The sync returns success, the audit quietly runs on
+    // less data, and without a row here the only symptom is a finding that
+    // seems wrong for reasons nobody can reconstruct.
+    recordAppError({
+      source: 'youtube',
+      operation: 'impressionMetrics',
+      error: err,
+      subject: videoId,
+      severity: 'warning',
+      context: {
+        startDate,
+        endDate,
+        consequence: 'CTR/impression audit finding computed without data',
+      },
+    })
   }
   return map
 }

@@ -3,6 +3,7 @@ import type { OAuth2Client } from 'google-auth-library'
 import { createServer, type Server } from 'http'
 import { shell } from 'electron'
 import { getSetting, setSetting, getDecodedSetting } from '../db/queries'
+import { recordAppError } from '../errors/errorLog'
 
 /**
  * One consent screen, one token store, for every Google surface the app uses.
@@ -84,8 +85,17 @@ class GoogleAuthManager {
     if (savedTokens) {
       try {
         client.setCredentials(JSON.parse(savedTokens))
-      } catch {
-        // corrupt/legacy token blob — treat as signed out
+      } catch (err) {
+        // corrupt/legacy token blob — treat as signed out. Recorded because
+        // the symptom the user gets is "I was signed out for no reason", and
+        // that is indistinguishable from an expired grant without this row.
+        recordAppError({
+          source: 'google',
+          operation: 'loadStoredTokens',
+          error: err,
+          severity: 'warning',
+          context: { consequence: 'stored Google tokens unreadable; treated as signed out' },
+        })
       }
     }
 
@@ -264,5 +274,16 @@ export function handleInvalidGrant(context: string): string {
     'This happens weekly while the OAuth client is in "Testing" status — switching it to ' +
     'Production in Google Cloud Console stops it.'
   reauthNotifier?.(message)
+  // Every dead grant funnels through here, so one record covers all of them.
+  // The occurrence count is the useful part: a weekly expiry and a grant that
+  // has died four times since Tuesday look identical in a notification and
+  // completely different here.
+  recordAppError({
+    source: 'google',
+    operation: 'refreshGrant',
+    error: message,
+    subject: context,
+    context: { cause: 'invalid_grant' },
+  })
   return message
 }

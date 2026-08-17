@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { existsSync } from 'fs'
 import { app } from 'electron'
 import { getDatabase } from '../../db/database'
-import { recordDevToolsError } from '../errorLog'
+import { recordAppError } from '../../errors/errorLog'
 import type { Tier, UserRule } from './classify'
 
 /**
@@ -179,8 +179,8 @@ export function loadUserRules(): UserRule[] {
     // direction for `allow` rules but silently discards the user's `block`
     // ones — a command they had explicitly forbidden would be classified on
     // built-ins alone and could run. Never let that happen quietly.
-    recordDevToolsError({
-      feature: 'shell',
+    recordAppError({
+      source: 'shell',
       operation: 'loadUserRules',
       error: err,
       severity: 'fatal',

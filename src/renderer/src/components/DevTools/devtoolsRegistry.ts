@@ -64,8 +64,10 @@ export const DEVTOOLS_SECTIONS: DevToolsSection[] = [
     component: lazy(() => import('./views/GitHubView').then((m) => ({ default: m.GitHubView }))),
   },
   {
-    // Last deliberately: it is where you go when something else here
-    // misbehaved, not somewhere to start.
+    // Last deliberately: it is where you go when something misbehaved, not
+    // somewhere to start. Its scope is wider than this tab — it records
+    // failures from the whole app, automations included — but it lives here
+    // because this is the tab you are already in when you go looking.
     id: 'errors',
     labelEn: 'Errors',
     labelJa: '不具合',

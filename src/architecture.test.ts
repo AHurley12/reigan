@@ -124,11 +124,17 @@ describe('module graph', () => {
     expect(edges).toBeGreaterThan(200)
   })
 
-  it('keeps the Dev Tools error log a leaf', () => {
-    // The features import the log, so the log importing a feature would close
-    // a cycle. Its only permitted relative dependency is the database.
-    const errorLog = join(SRC, 'main', 'devtools', 'errorLog.ts')
+  it('keeps the error log a leaf', () => {
+    // Every subsystem imports the log, so the log importing one back would
+    // close a cycle. Its only permitted dependencies are the database and the
+    // shared source vocabulary — the latter is a dependency-free list of string
+    // literals, not a feature, and exists precisely so that the source list is
+    // not maintained in four places at once.
+    const errorLog = join(SRC, 'main', 'errors', 'errorLog.ts')
     expect(files).toContain(errorLog)
-    expect((graph.get(errorLog) ?? []).map(asRelative)).toEqual(['main/db/database.ts'])
+    expect((graph.get(errorLog) ?? []).map(asRelative).sort()).toEqual([
+      'main/db/database.ts',
+      'shared/errors.ts',
+    ])
   })
 })

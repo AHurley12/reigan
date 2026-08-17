@@ -10,7 +10,7 @@ import {
   saveRootMtimes,
   upsertProjects,
 } from './store'
-import { recordDevToolsError } from '../errorLog'
+import { recordAppError } from '../../errors/errorLog'
 import type { ScanOptions, ScannedProject, WorkerMessage } from './types'
 
 /**
@@ -169,8 +169,8 @@ export async function runScan(params: {
     // keeps the failure alongside every other Dev Tools failure, so a scan that
     // has been dying for a fortnight is visible next to everything else that
     // has gone wrong rather than only to whoever opens the scan history.
-    recordDevToolsError({
-      feature: 'scanner',
+    recordAppError({
+      source: 'scanner',
       operation: 'runScan',
       error: err,
       severity: 'fatal',

@@ -3,6 +3,7 @@ import { IPC } from '../../shared/types'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
+import { recordAppError } from '../errors/errorLog'
 
 let activeConversationId: string | null = null
 
@@ -39,6 +40,15 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       }
     } catch (err) {
       console.error('[REIGAN] streamResponse failed:', err)
+      // The user sees this once, inline in the transcript, and then it scrolls
+      // away. A console line is not a record on a packaged build where nobody
+      // has a terminal open.
+      recordAppError({
+        source: 'llm',
+        operation: 'streamResponse',
+        error: err,
+        context: { conversationId: activeConversationId, historyLength: history.length },
+      })
       const errMsg = `Error: ${err instanceof Error ? err.message : String(err)}`
       mainWindow.webContents.send(IPC.LLM_STREAM, { token: errMsg, done: true, conversationId: activeConversationId })
       return { conversationId: activeConversationId }
@@ -58,7 +68,28 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       const similarityRaw = Number(getSetting('ttsSimilarity'))
       const stability = Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5
       const similarityBoost = Number.isFinite(similarityRaw) ? similarityRaw : 0.75
-      voiceManager.speak(fullResponse, { elevenLabsApiKey, voiceId, stability, similarityBoost }).catch(() => {})
+      // Not `.catch(() => {})`. Speech failing while the reply is already on
+      // screen is the definition of a failure with no symptom: the answer is
+      // there, it simply never spoke, and the user is left thinking the voice
+      // feature is broken with nothing to point at. Still swallowed as far as
+      // control flow goes — a dead TTS key must not break the reply — but no
+      // longer unrecorded.
+      voiceManager
+        .speak(fullResponse, { elevenLabsApiKey, voiceId, stability, similarityBoost })
+        .catch((err) => {
+          recordAppError({
+            source: 'voice',
+            operation: 'speak',
+            error: err,
+            severity: 'warning',
+            context: {
+              conversationId: activeConversationId,
+              hasKey: !!elevenLabsApiKey,
+              voiceId: voiceId ?? null,
+              consequence: 'reply was shown but not spoken',
+            },
+          })
+        })
     }
 
     return { conversationId: activeConversationId }

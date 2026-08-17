@@ -10,14 +10,13 @@ import {
   type ProjectWithFlags,
 } from '../../devtools/scanner/store'
 import {
-  clearDevToolsErrors,
-  listDevToolsErrors,
-  summariseDevToolsErrors,
-  type DevToolsErrorRow,
-  type DevToolsErrorSeverity,
-  type DevToolsErrorSummary,
-  type DevToolsFeature,
-} from '../../devtools/errorLog'
+  clearAppErrors,
+  listAppErrors,
+  summariseAppErrors,
+  type AppErrorRow,
+  type AppErrorSummary,
+} from '../../errors/errorLog'
+import { ERROR_SOURCES, ERROR_SEVERITIES, type ErrorSource, type ErrorSeverity } from '../../../shared/errors'
 import { CapabilityError, type AnyCapability } from '../types'
 
 /**
@@ -286,16 +285,16 @@ export const devtoolsCapabilities: AnyCapability[] = [
 
   {
     id: 'devtools.listErrors',
-    title: 'List Dev Tools errors',
+    title: 'List recorded errors',
     description:
-      "Recent failures inside the Dev Tools features, newest first. This is the first thing to check when a Dev Tools feature behaves oddly — most of what it records are *partial* failures that the feature itself reported as success: files an organiser run could not move, directories a scan was denied, ports listed without a process name. Identical failures are collapsed into one entry with an occurrence count. Severity: warning = degraded but working, error = the operation failed, fatal = data or safety consequence.",
+      "Recent failures from anywhere in the app, newest first. This is the first thing to check when something behaved oddly. Two kinds of failure end up here, and neither is visible anywhere else: *partial* failures the feature itself reported as success (files an organiser run could not move, directories a scan was denied, ports listed without a process name), and failures that were announced once and then discarded (a scheduled job that was auto-disabled, a Google token refresh, an LLM or voice call). Identical failures are collapsed into one entry with an occurrence count. Severity: warning = degraded but working, error = the operation failed, fatal = data or safety consequence.",
     risk: 'read',
     schema: z.object({
-      feature: z
-        .enum(['scanner', 'localhost', 'shell', 'organizer', 'vault', 'github'])
+      source: z
+        .enum(ERROR_SOURCES)
         .optional()
-        .describe('Only this feature.'),
-      severity: z.enum(['warning', 'error', 'fatal']).optional(),
+        .describe('Only this source, e.g. "jobs" for scheduled automations.'),
+      severity: z.enum(ERROR_SEVERITIES).optional(),
       sinceHours: z
         .number()
         .int()
@@ -306,27 +305,27 @@ export const devtoolsCapabilities: AnyCapability[] = [
       limit: z.number().int().min(1).max(500).optional(),
     }),
     handler: async (args: {
-      feature?: DevToolsFeature
-      severity?: DevToolsErrorSeverity
+      source?: ErrorSource
+      severity?: ErrorSeverity
       sinceHours?: number
       limit?: number
     }) => {
       const since =
         args.sinceHours === undefined ? undefined : Date.now() - args.sinceHours * 60 * 60 * 1000
-      const errors = listDevToolsErrors({
-        feature: args.feature,
+      const errors = listAppErrors({
+        source: args.source,
         severity: args.severity,
         since,
         limit: args.limit,
       })
-      return { errors, summary: summariseDevToolsErrors(since) }
+      return { errors, summary: summariseAppErrors(since) }
     },
-    formatResult: (r: { errors: DevToolsErrorRow[]; summary: DevToolsErrorSummary }) => {
-      if (r.errors.length === 0) return 'No Dev Tools errors recorded for that filter.'
+    formatResult: (r: { errors: AppErrorRow[]; summary: AppErrorSummary }) => {
+      if (r.errors.length === 0) return 'No errors recorded for that filter.'
       const lines = r.errors.slice(0, 30).map((e) => {
         const repeat = e.occurrences > 1 ? ` ×${e.occurrences}` : ''
         const subject = e.subject ? `\n    ${e.subject}` : ''
-        return `  • [${e.severity}] ${e.feature}/${e.operation}${repeat} — ${e.message}${subject}`
+        return `  • [${e.severity}] ${e.source}/${e.operation}${repeat} — ${e.message}${subject}`
       })
       const more = r.errors.length > 30 ? `\n  …and ${r.errors.length - 30} more.` : ''
       const head = `${r.summary.distinct} distinct problem(s), ${r.summary.total} occurrence(s).`
@@ -336,29 +335,29 @@ export const devtoolsCapabilities: AnyCapability[] = [
 
   {
     id: 'devtools.clearErrors',
-    title: 'Clear the Dev Tools error log',
+    title: 'Clear the error log',
     description:
-      'Delete recorded Dev Tools errors, optionally for one feature only. Use after fixing the underlying cause, so what remains is current.',
+      'Delete recorded errors, optionally for one source only. Use after fixing the underlying cause, so what remains is current.',
     // Destroys a diagnostic record and nothing else, but it is still deletion
-    // the user cannot undo, so it prompts like any other delete.
+    // the user cannot undo, so it prompts like any other delete. It matters
+    // more now than it did: this log is the only surviving record of a job
+    // failure once the job itself has been deleted.
     risk: 'destructive',
     schema: z.object({
-      feature: z
-        .enum(['scanner', 'localhost', 'shell', 'organizer', 'vault', 'github'])
+      source: z
+        .enum(ERROR_SOURCES)
         .optional()
-        .describe('Clear only this feature. Omit to clear everything.'),
+        .describe('Clear only this source. Omit to clear everything.'),
     }),
     approval: {
-      summary: (args: { feature?: DevToolsFeature }) =>
-        args.feature
-          ? `Clear recorded ${args.feature} errors`
-          : 'Clear the entire Dev Tools error log',
+      summary: (args: { source?: ErrorSource }) =>
+        args.source ? `Clear recorded ${args.source} errors` : 'Clear the entire error log',
     },
-    handler: async (args: { feature?: DevToolsFeature }) => ({
-      cleared: clearDevToolsErrors(args.feature),
-      feature: args.feature ?? null,
+    handler: async (args: { source?: ErrorSource }) => ({
+      cleared: clearAppErrors(args.source),
+      source: args.source ?? null,
     }),
-    formatResult: (r: { cleared: number; feature: string | null }) =>
-      `Cleared ${r.cleared} error record(s)${r.feature ? ` for ${r.feature}` : ''}.`,
+    formatResult: (r: { cleared: number; source: string | null }) =>
+      `Cleared ${r.cleared} error record(s)${r.source ? ` for ${r.source}` : ''}.`,
   },
 ]

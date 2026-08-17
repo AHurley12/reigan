@@ -240,13 +240,34 @@ sync, insights and the view remain.
 
 ## Error log
 
-`devtools_errors` (migration 12), surfaced as the **Errors** sub-tab and as
-`devtools.listErrors` / `devtools.clearErrors`.
+`app_errors` (migration 12 as `devtools_errors`, widened to the whole app and
+renamed by migration 13), surfaced as the **Errors** sub-tab of Dev Tools and as
+`devtools.listErrors` / `devtools.clearErrors`. The capability ids keep their
+`devtools.` prefix deliberately: jobs persist `capability_id`, so renaming them
+would break any saved automation pointing at them.
+
+Two shapes of failure land here, and neither is durable anywhere else:
+
+- **Partial failures** the feature itself reported as success — files an
+  organiser run could not move, directories a scan was denied, ports listed
+  without a process name. These never reach the dispatch boundary, so
+  `capability_audit` does not see them.
+- **Failures announced once and then discarded** — an auto-disabled automation,
+  an expired Google grant, a reply that was shown but never spoken. `job_runs`
+  is pruned at 90 days and is `ON DELETE CASCADE` from `jobs`, so deleting an
+  automation destroys its whole failure history. Nothing in `app_errors` is a
+  foreign key; a row outlives what it describes.
+
+Sources are declared once in `src/shared/errors.ts` and derive the CHECK
+constraint, the recorder's type, both capability schemas and the view's filter
+chips. `fileops`, `files` and `voiceauth` are registered but have no write sites
+— a path-guard denial is the guard working, and logging every one would bury the
+failures the table exists to surface.
 
 | id | Risk | Notes |
 | --- | --- | --- |
-| `devtools.listErrors` | read | Filter by feature, severity, age. Returns a summary alongside the rows |
-| `devtools.clearErrors` | destructive | Whole log, or one feature. Prompts like any delete |
+| `devtools.listErrors` | read | Filter by source, severity, age. Returns a summary alongside the rows |
+| `devtools.clearErrors` | destructive | Whole log, or one source. Prompts like any delete |
 
 **Why this is not `capability_audit`.** The audit table records *dispatches*,
 so it only ever sees a failure that propagated out of a handler. These

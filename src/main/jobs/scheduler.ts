@@ -17,6 +17,7 @@ import {
   type TriggeredBy,
 } from './store'
 import { missedOccurrences, nextOccurrence, MAX_CATCH_UP_OCCURRENCES } from './schedule'
+import { recordAppError } from '../errors/errorLog'
 import { randomUUID } from 'crypto'
 import type { JobAlertKind, JobNotification } from '../../shared/types'
 
@@ -298,6 +299,18 @@ async function executeJob(
   if (!capability) {
     const error = `Capability "${job.capabilityId}" is not registered.`
     recordInstantRun({ jobId: job.id, status: 'failure', triggeredBy, scheduledFor, error })
+    // Fatal on the first occurrence, with no retry: a capability that is not
+    // registered will not become registered by waiting. This usually means a
+    // job outlived the feature it was scheduled against, which is exactly the
+    // sort of thing nobody remembers a month later.
+    recordAppError({
+      source: 'jobs',
+      operation: job.capabilityId,
+      error,
+      subject: job.name,
+      severity: 'fatal',
+      context: { jobId: job.id, triggeredBy, disabled: true },
+    })
     disableJob(job, error)
     return { ok: false, message: error }
   }
@@ -410,7 +423,32 @@ function handleFailure(
   })
   recordJobOutcome(job.id, timedOut ? 'timeout' : 'failure', Date.now(), attempt)
 
-  if (attempt > job.maxRetries) {
+  const terminal = attempt > job.maxRetries
+
+  // The durable record. `job_runs` already has this failure, but only for 90
+  // days and only until the job is deleted — the rows cascade. That is the
+  // wrong lifetime for the question this answers, which is asked months later
+  // and often about an automation the user has since removed: "what was it
+  // that kept breaking?". Recorded on every attempt rather than only on the
+  // disable, because the fingerprint collapses the retries of one outage onto
+  // a single row whose occurrence count is then the useful number. The row is
+  // upgraded to `fatal` by the attempt that gives up.
+  recordAppError({
+    source: 'jobs',
+    operation: job.capabilityId,
+    error: detail,
+    subject: job.name,
+    severity: terminal ? 'fatal' : 'error',
+    context: {
+      jobId: job.id,
+      attempt,
+      maxRetries: job.maxRetries,
+      timedOut,
+      disabled: terminal,
+    },
+  })
+
+  if (terminal) {
     // Disabling is the point. A job that fails forever in silence is the worst
     // outcome available — worse than one that stops and says so.
     const reason = `Failed ${attempt} time(s) in a row. Last error: ${detail}`

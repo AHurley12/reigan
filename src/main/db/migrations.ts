@@ -725,6 +725,119 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 13,
+    name: 'app-wide-error-log',
+    // Migration 12 built this table for the Dev Tools tab alone, and its CHECK
+    // constraint says so. But the failures that actually reach a user are not
+    // confined to that tab: a scheduled job that fails four times in a row is
+    // auto-disabled and explains itself in a notification and a `disabled_reason`
+    // string, and `job_runs` — the only durable record — is pruned at 90 days
+    // and is `ON DELETE CASCADE` from `jobs`. Delete the automation and its
+    // entire failure history goes with it. Same shape of hole for a Google token
+    // refresh, an LLM call, a TTS request: shown once, then gone.
+    //
+    // So the table stops being the Dev Tools log and becomes the app's log.
+    // `feature` was always the wrong noun for that and is renamed `source`.
+    //
+    // SQLite cannot ALTER a CHECK constraint, so this is the 12-step table
+    // rebuild rather than an ALTER. Rows carry over unchanged: every existing
+    // value is still a valid source.
+    //
+    // The source list below is deliberately a hardcoded literal and NOT derived
+    // from shared/errors.ts. A migration is history — if this read the live
+    // constant, adding a source later would widen the CHECK on fresh databases
+    // while every already-migrated database kept the old one, and the resulting
+    // write failure is swallowed by the recorder's never-throw guarantee. New
+    // sources need their own migration; `errorLog.test.ts` fails loudly if the
+    // constant and the schema drift apart.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS app_errors (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL
+            CHECK (source IN ('scanner', 'localhost', 'shell', 'organizer', 'vault', 'github',
+                              'jobs', 'youtube', 'google', 'llm', 'voice',
+                              'fileops', 'files', 'voiceauth')),
+          /* The specific step, e.g. 'executeOp' — narrower than the source so
+             a failing step is identifiable without reading the message. */
+          operation TEXT NOT NULL,
+          severity TEXT NOT NULL DEFAULT 'error'
+            CHECK (severity IN ('warning', 'error', 'fatal')),
+          message TEXT NOT NULL,
+          /* errno-style code where the platform gave one (EACCES, EXDEV). */
+          code TEXT,
+          /* What the failure was about: a path, a port, a command, a job name. */
+          subject TEXT,
+          context_json TEXT NOT NULL DEFAULT '{}',
+          stack TEXT,
+          /* Identical failures collapse onto one row and increment
+             occurrences. A scan denied on one protected tree would otherwise
+             write hundreds of rows that say the same thing and push every
+             other error out of the retention window. */
+          fingerprint TEXT NOT NULL,
+          occurrences INTEGER NOT NULL DEFAULT 1,
+          first_seen INTEGER NOT NULL,
+          last_seen INTEGER NOT NULL
+        );
+      `)
+
+      // Guarded rather than unconditional: `migrations.test.ts` rewinds
+      // `user_version` and replays the whole list against an already-migrated
+      // database, so every migration here has to survive being run twice. The
+      // copy is the one step that cannot be expressed with IF NOT EXISTS.
+      const legacy = db
+        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'devtools_errors'`)
+        .get()
+
+      if (legacy) {
+        db.exec(`
+          INSERT OR IGNORE INTO app_errors
+            (id, source, operation, severity, message, code, subject,
+             context_json, stack, fingerprint, occurrences, first_seen, last_seen)
+          SELECT
+             id, feature, operation, severity, message, code, subject,
+             context_json, stack, fingerprint, occurrences, first_seen, last_seen
+          FROM devtools_errors;
+
+          DROP TABLE devtools_errors;
+        `)
+      }
+
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_app_errors_fingerprint
+          ON app_errors(fingerprint);
+        CREATE INDEX IF NOT EXISTS idx_app_errors_seen
+          ON app_errors(last_seen DESC);
+        CREATE INDEX IF NOT EXISTS idx_app_errors_source
+          ON app_errors(source, last_seen DESC);
+      `)
+    },
+  },
+
+  {
+    version: 14,
+    name: 'yt-daily-engagement',
+    // `yt_daily_stats` recorded reach (views, watch time, subscribers) but not
+    // engagement: likes and comments existed only as the *lifetime* totals on
+    // `yt_videos`, which are a running count and cannot be differenced into a
+    // series. So there was no way to answer "did that upload get more comments
+    // than usual", only "how many comments does it have in total, ever".
+    //
+    // Both metrics come back from the same Analytics `day` report the other
+    // columns already use — same call, same quota, two more values in the
+    // metrics list — so this costs nothing at sync time.
+    //
+    // Backfill is deliberately NOT attempted here. Existing rows keep the 0
+    // default and stay honest about it: the daily figures were never fetched,
+    // and the lifetime totals cannot be attributed to the days they happened
+    // on. They fill in from the next full sync onward.
+    up: (db) => {
+      addColumnIfMissing(db, 'yt_daily_stats', 'likes', 'INTEGER NOT NULL DEFAULT 0')
+      addColumnIfMissing(db, 'yt_daily_stats', 'comments', 'INTEGER NOT NULL DEFAULT 0')
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

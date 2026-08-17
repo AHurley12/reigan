@@ -3,15 +3,27 @@ import { RefreshCw, Trash2, ChevronRight } from 'lucide-react'
 import { useCapability } from '../useCapability'
 import { AsyncPane } from '../shared/AsyncPane'
 import { useToastStore } from '../../../stores/toastStore'
+import {
+  ERROR_SOURCES,
+  errorSourceLabel,
+  isDevToolsSource,
+} from '../../../../../shared/errors'
 
 /**
- * The Dev Tools error log.
+ * The error log.
  *
- * Exists because most of what goes wrong in this tab does not announce itself:
- * an organiser run reports success having skipped three files it could not
- * move, a scan is denied on a folder and simply indexes fewer projects, ports
- * list without process names. Each of those looks like a working feature. This
- * is the one place where they are visible.
+ * Lives in Dev Tools but is no longer about Dev Tools. It exists because most
+ * of what goes wrong does not announce itself, in two different ways:
+ *
+ *  - an organiser run reports success having skipped three files it could not
+ *    move, a scan is denied on a folder and simply indexes fewer projects,
+ *    ports list without process names — each looks like a working feature;
+ *  - an automation is auto-disabled, a Google grant expires, a reply is shown
+ *    but never spoken — announced once in a notification that then scrolls
+ *    away, with `job_runs` pruned at 90 days and cascade-deleted with the job.
+ *
+ * This is the one place both are visible, and the only one that outlives the
+ * thing that failed.
  *
  * Sorted by recency rather than severity on purpose — the question this view
  * answers is "what just went wrong", and a fortnight-old fatal outranking the
@@ -22,7 +34,7 @@ type Severity = 'warning' | 'error' | 'fatal'
 
 interface ErrorRow {
   id: string
-  feature: string
+  source: string
   operation: string
   severity: Severity
   message: string
@@ -38,11 +50,9 @@ interface ErrorRow {
 interface ErrorSummary {
   distinct: number
   total: number
-  byFeature: Record<string, { distinct: number; total: number }>
+  bySource: Record<string, { distinct: number; total: number }>
   newestAt: number | null
 }
-
-const FEATURES = ['scanner', 'localhost', 'shell', 'organizer', 'vault', 'github'] as const
 
 /** Reuses the status ramp the rest of the app already maps to severity. */
 const SEVERITY_TOKEN: Record<Severity, string> = {
@@ -66,13 +76,13 @@ export function ErrorsView() {
   const clear = useCapability<{ cleared: number }>('devtools.clearErrors')
   const toast = useToastStore((s) => s.push)
 
-  const [feature, setFeature] = useState<string | null>(null)
+  const [source, setSource] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    await list.run(feature ? { feature, limit: 200 } : { limit: 200 })
+    await list.run(source ? { source, limit: 200 } : { limit: 200 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feature])
+  }, [source])
 
   useEffect(() => {
     void refresh()
@@ -81,53 +91,76 @@ export function ErrorsView() {
   const handleClear = useCallback(async () => {
     // Destructive tier, so this routes through the approval dialog rather than
     // a confirm() of its own.
-    const result = await clear.run(feature ? { feature } : {})
+    const result = await clear.run(source ? { source } : {})
     if (result) {
       toast(`Cleared ${result.cleared} error record(s).`, 'success')
       void refresh()
     }
-  }, [clear, feature, refresh, toast])
+  }, [clear, source, refresh, toast])
 
   const errors = list.data?.errors ?? []
   const summary = list.data?.summary
+
+  // Only sources that have actually recorded something get a chip. Fourteen
+  // permanent chips — most of them reading zero on a healthy machine — would
+  // turn a filter bar into a wall and push the useful ones off the edge. The
+  // summary is deliberately computed unfiltered by the handler, so these counts
+  // and the bar's contents do not change as you click through it. The current
+  // selection is always kept, or clearing a source would delete the chip you
+  // are standing on and strand the view on an empty list.
+  const present = ERROR_SOURCES.filter(
+    (s) => (summary?.bySource[s]?.distinct ?? 0) > 0 || s === source
+  )
+  const devSources = present.filter((s) => isDevToolsSource(s))
+  const appSources = present.filter((s) => !isDevToolsSource(s))
+
+  const chip = (s: string) => {
+    const count = summary?.bySource[s]?.distinct ?? 0
+    return (
+      <button
+        key={s}
+        onClick={() => setSource(s)}
+        className="px-2 py-1 rounded-sm text-xs whitespace-nowrap transition-colors"
+        style={{
+          color: source === s ? 'var(--text-primary)' : 'var(--text-muted)',
+          border: `1px solid ${source === s ? 'var(--border-accent)' : 'transparent'}`,
+        }}
+        aria-pressed={source === s}
+      >
+        {errorSourceLabel(s)}
+        {count > 0 && (
+          <span className="ml-1.5 font-mono" style={{ color: 'var(--text-muted)' }}>
+            {count}
+          </span>
+        )}
+      </button>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
       <div className="rule-b flex items-center justify-between px-4 py-2.5 shrink-0 gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto">
           <button
-            onClick={() => setFeature(null)}
+            onClick={() => setSource(null)}
             className="px-2 py-1 rounded-sm text-xs whitespace-nowrap transition-colors"
             style={{
-              color: feature === null ? 'var(--text-primary)' : 'var(--text-muted)',
-              border: `1px solid ${feature === null ? 'var(--border-accent)' : 'transparent'}`,
+              color: source === null ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: `1px solid ${source === null ? 'var(--border-accent)' : 'transparent'}`,
             }}
-            aria-pressed={feature === null}
+            aria-pressed={source === null}
           >
             All
           </button>
-          {FEATURES.map((f) => {
-            const count = summary?.byFeature[f]?.distinct ?? 0
-            return (
-              <button
-                key={f}
-                onClick={() => setFeature(f)}
-                className="px-2 py-1 rounded-sm text-xs whitespace-nowrap transition-colors"
-                style={{
-                  color: feature === f ? 'var(--text-primary)' : 'var(--text-muted)',
-                  border: `1px solid ${feature === f ? 'var(--border-accent)' : 'transparent'}`,
-                }}
-                aria-pressed={feature === f}
-              >
-                {f}
-                {count > 0 && (
-                  <span className="ml-1.5 font-mono" style={{ color: 'var(--text-muted)' }}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+          {devSources.map(chip)}
+          {devSources.length > 0 && appSources.length > 0 && (
+            <span
+              aria-hidden
+              className="w-px self-stretch my-1 shrink-0"
+              style={{ background: 'var(--border)' }}
+            />
+          )}
+          {appSources.map(chip)}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -165,9 +198,9 @@ export function ErrorsView() {
           empty={errors.length === 0}
           emptyTitle="Nothing has gone wrong"
           emptyHint={
-            feature
-              ? `No ${feature} failures recorded.`
-              : 'Dev Tools failures are recorded here as they happen — including the partial ones a feature otherwise reports as success.'
+            source
+              ? `No ${errorSourceLabel(source)} failures recorded.`
+              : 'Failures from anywhere in the app are recorded here as they happen — including the partial ones a feature otherwise reports as success, and the ones that were only ever a notification.'
           }
           onRetry={() => void refresh()}
           skeletonRows={5}
@@ -209,7 +242,7 @@ export function ErrorsView() {
                     <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          {e.feature}/{e.operation}
+                          {e.source}/{e.operation}
                         </span>
                         {e.code && (
                           <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>

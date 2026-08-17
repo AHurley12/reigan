@@ -6,7 +6,7 @@ import { getDatabase } from '../../db/database'
 import { getGuardContext } from '../../fileops/allowlist'
 import { guardPath } from '../../fileops/pathGuard'
 import { sha256File } from '../../fileops/hash'
-import { recordDevToolsError } from '../errorLog'
+import { recordAppError } from '../../errors/errorLog'
 import type { Plan, PlannedOp } from './plan'
 
 /**
@@ -74,8 +74,8 @@ export async function executePlan(
       // The run itself still succeeds, so nothing downstream will ever see
       // this. Without a durable record, "the organiser said it moved them but
       // three are still there" is unanswerable after the result is discarded.
-      recordDevToolsError({
-        feature: 'organizer',
+      recordAppError({
+        source: 'organizer',
         operation: 'executeOp',
         error: err,
         subject: op.sourcePath,
@@ -239,8 +239,8 @@ export async function undoRun(runId: string): Promise<UndoResult> {
       // A failed undo is the worst outcome this feature has — the file is
       // neither where it started nor where the user asked it back to — so it
       // is logged as fatal rather than error.
-      recordDevToolsError({
-        feature: 'organizer',
+      recordAppError({
+        source: 'organizer',
         operation: 'undoOp',
         error: err,
         subject: destPath ?? sourcePath,
