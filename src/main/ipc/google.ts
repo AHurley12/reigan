@@ -7,6 +7,15 @@ export function registerGoogleHandlers(): void {
   ipcMain.handle(IPC.GOOGLE_STATUS, () => ({
     configured: googleAuth.isConfigured(),
     connected: googleAuth.isAuthenticated(),
+    // Per-feature, because "connected" is not the same as "allowed to call
+    // YouTube": a token minted before the YouTube scopes existed authenticates
+    // fine and 403s on every stats call. Reporting one boolean is what made
+    // that failure look like a Cloud console problem.
+    grants: {
+      youtube: googleAuth.hasScopes('youtube'),
+      gmail: googleAuth.hasScopes('gmail'),
+      calendar: googleAuth.hasScopes('calendar'),
+    },
   }))
 
   ipcMain.handle(IPC.GOOGLE_CONNECT, async () => {
