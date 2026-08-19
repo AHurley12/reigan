@@ -838,6 +838,32 @@ export const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, 'yt_daily_stats', 'comments', 'INTEGER NOT NULL DEFAULT 0')
     },
   },
+
+  {
+    version: 15,
+    name: 'yt-reach-reports',
+    // The ledger of Reporting API reports already consumed.
+    //
+    // Dedupe is by report id alone, which also handles YouTube's replacement
+    // datasets correctly: a corrected window arrives as a *new* report id, so it
+    // reads as new work and its rows overwrite the originals through the same
+    // upsert. Tracking versions per window would add state that buys nothing.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS yt_reach_reports (
+          report_id     TEXT PRIMARY KEY,
+          job_id        TEXT NOT NULL,
+          window_start  TEXT NOT NULL,
+          window_end    TEXT NOT NULL,
+          rows_ingested INTEGER NOT NULL DEFAULT 0,
+          ingested_at   INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_yt_reach_ingested
+          ON yt_reach_reports(ingested_at);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */
