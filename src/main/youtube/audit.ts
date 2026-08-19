@@ -270,9 +270,10 @@ function revivalCandidates(
   const ctrs = [...recent.values()].filter((s) => s.impressions28 >= 500).map((s) => s.ctr)
   const medianCtr = median(ctrs)
 
-  // The two findings below need thumbnail impressions and CTR, and the YouTube
-  // Analytics API exposes neither — they exist only in the Reporting API's bulk
-  // reach reports, which this app does not ingest (see `syncVideoDailyStats`).
+  // The two findings below need thumbnail impressions and CTR, which the YouTube
+  // Analytics API does not expose. They arrive instead from the Reporting API's
+  // bulk reach reports, on a daily job that ships disabled — so "no data" here
+  // usually means "that job has not been enabled yet", not "impossible".
   //
   // Without this, the audit's failure mode is silence: no impressions means the
   // thresholds below can never be met, so a channel with a genuine thumbnail
@@ -287,13 +288,14 @@ function revivalCandidates(
       severity: 'info',
       title: 'Thumbnail CTR analysis could not run',
       detail:
-        'No impression data is available for this channel. The YouTube Analytics API does not ' +
-        'expose thumbnail impressions or click-through rate — those metrics live only in the ' +
-        "Reporting API's bulk reach reports, which REIGAN does not yet ingest.",
-      evidence: { videosConsidered: recent.size, metricsSource: 'youtubeAnalytics.reports.query' },
+        'No impression data has been collected for this channel yet. Thumbnail impressions and ' +
+        'click-through rate come from the YouTube Reporting API, which delivers them as daily ' +
+        'bulk reports rather than through the Analytics queries the channel sync makes.',
+      evidence: { videosConsidered: recent.size, source: 'channel_reach_basic_a1' },
       recommendation:
-        'Nothing to fix on your side. Thumbnail and packaging findings stay unavailable until ' +
-        'reach-report ingest is built; every other finding in this audit is unaffected.',
+        'Enable the "Ingest YouTube reach reports" job in Automations → Jobs. Google generates ' +
+        'the first report within 48 hours and backfills 30 days of history with it; these ' +
+        'findings start working as soon as it lands.',
       lowConfidence: false,
       generatedAt: now,
     })

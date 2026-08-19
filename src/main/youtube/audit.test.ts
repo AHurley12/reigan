@@ -299,7 +299,8 @@ describe('CTR analysis availability', () => {
     expect(finding).toBeDefined()
     expect(finding!.videoId).toBeNull()
     expect(finding!.severity).toBe('info')
-    expect(finding!.detail).toMatch(/Analytics API/)
+    // It must say where the data comes from, not merely that it is missing.
+    expect(finding!.detail).toMatch(/Reporting API/)
   })
 
   it('stays quiet when impression data is present', () => {
@@ -307,5 +308,30 @@ describe('CTR analysis availability', () => {
     addDailyStats('measured', 28, { views: 20, impressions: 200, ctr: 0.1 })
 
     expect(runCatalogAudit().some((f) => f.kind === 'ctr_unavailable')).toBe(false)
+  })
+
+  it('names the job to enable rather than calling the data impossible', () => {
+    addVideo({ id: 'quiet', title: 'No impression data', ageDays: 200, lifetimeViews: 2000 })
+    addDailyStats('quiet', 28, { views: 20 })
+
+    const finding = runCatalogAudit().find((f) => f.kind === 'ctr_unavailable')
+
+    expect(finding!.recommendation).toMatch(/Ingest YouTube reach reports/)
+  })
+
+  it('produces the thumbnail finding once reach data has been ingested', () => {
+    // The end state this whole feature exists for: with impressions present, the
+    // packaging findings work again and the unavailability notice disappears.
+    for (let i = 0; i < 5; i++) {
+      addVideo({ id: `base${i}`, title: `Baseline ${i}`, ageDays: 200, lifetimeViews: 2000 })
+      addDailyStats(`base${i}`, 28, { views: 20, impressions: 200, ctr: 0.1, avp: 50 })
+    }
+    addVideo({ id: 'lowctr', title: 'Poor thumbnail', ageDays: 200, lifetimeViews: 2000 })
+    addDailyStats('lowctr', 28, { views: 10, impressions: 200, ctr: 0.02, avp: 50 })
+
+    const findings = runCatalogAudit()
+
+    expect(findings.find((f) => f.kind === 'revival_thumbnail')?.videoId).toBe('lowctr')
+    expect(findings.some((f) => f.kind === 'ctr_unavailable')).toBe(false)
   })
 })
