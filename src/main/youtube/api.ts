@@ -1,4 +1,9 @@
-import { google, type youtube_v3, type youtubeAnalytics_v2 } from 'googleapis'
+import {
+  google,
+  type youtube_v3,
+  type youtubeAnalytics_v2,
+  type youtubereporting_v1,
+} from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 import { googleAuth, handleInvalidGrant, isInvalidGrantError } from '../auth/googleAuth'
 import { CapabilityError } from '../capabilities/types'
@@ -102,6 +107,53 @@ export async function analyticsCall<T>(label: string, fn: () => Promise<T>): Pro
     }
     throw new CapabilityError(
       `YouTube Analytics ${label} failed: ${(err as Error)?.message ?? String(err)}`,
+      'handler_failed'
+    )
+  }
+}
+
+/**
+ * The Reporting API client.
+ *
+ * A third Google surface, sharing the `yt-analytics.readonly` scope the
+ * Analytics calls already hold — so a connected account needs no further
+ * consent to use it.
+ */
+export function getReportingClient(): youtubereporting_v1.Youtubereporting {
+  const auth = googleAuth.getClient()
+  if (!auth) {
+    throw new CapabilityError(
+      'No Google account connected. Connect one in Settings first.',
+      'not_connected'
+    )
+  }
+  if (!googleAuth.hasScopes('youtube')) {
+    throw new CapabilityError(
+      'Your Google account is connected but has not granted YouTube access. ' +
+        'Reconnect in Settings to approve the YouTube scopes.',
+      'not_connected'
+    )
+  }
+  return google.youtubereporting({ version: 'v1', auth })
+}
+
+/**
+ * Reporting API calls, sharing the auth failure handling of the other two.
+ *
+ * Deliberately not metered: bulk reports draw on a separate quota, and charging
+ * them against the 10,000 Data API units would refuse syncs that are affordable.
+ * Errors other than a dead grant keep Google's own message — for a disabled API
+ * that text carries the enablement link, which is the only useful part.
+ */
+export async function reportingCall<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    if (isInvalidGrantError(err)) {
+      throw new CapabilityError(handleInvalidGrant(`YouTube Reporting ${label}`), 'not_connected')
+    }
+    throw new CapabilityError(
+      `YouTube Reporting ${label} failed: ${(err as Error)?.message ?? String(err)}`,
       'handler_failed'
     )
   }
