@@ -32,6 +32,7 @@ export type FindingKind =
   | 'revival_thumbnail'
   | 'revival_content'
   | 'revival_remake'
+  | 'ctr_unavailable'
   | 'metadata_hygiene'
   | 'cadence'
   | 'title_pattern'
@@ -268,6 +269,35 @@ function revivalCandidates(
   // "below average for you" is actionable, "below 4%" is not.
   const ctrs = [...recent.values()].filter((s) => s.impressions28 >= 500).map((s) => s.ctr)
   const medianCtr = median(ctrs)
+
+  // The two findings below need thumbnail impressions and CTR, and the YouTube
+  // Analytics API exposes neither — they exist only in the Reporting API's bulk
+  // reach reports, which this app does not ingest (see `syncVideoDailyStats`).
+  //
+  // Without this, the audit's failure mode is silence: no impressions means the
+  // thresholds below can never be met, so a channel with a genuine thumbnail
+  // problem reads exactly like a channel with none. Saying "this analysis could
+  // not run, and here is why" is the honest version, and it is the difference
+  // between an audit that missed something and an audit that lied.
+  if (![...recent.values()].some((s) => s.impressions28 > 0)) {
+    findings.push({
+      id: randomUUID(),
+      kind: 'ctr_unavailable',
+      videoId: null,
+      severity: 'info',
+      title: 'Thumbnail CTR analysis could not run',
+      detail:
+        'No impression data is available for this channel. The YouTube Analytics API does not ' +
+        'expose thumbnail impressions or click-through rate — those metrics live only in the ' +
+        "Reporting API's bulk reach reports, which REIGAN does not yet ingest.",
+      evidence: { videosConsidered: recent.size, metricsSource: 'youtubeAnalytics.reports.query' },
+      recommendation:
+        'Nothing to fix on your side. Thumbnail and packaging findings stay unavailable until ' +
+        'reach-report ingest is built; every other finding in this audit is unaffected.',
+      lowConfidence: false,
+      generatedAt: now,
+    })
+  }
 
   for (const video of videos) {
     const stat = recent.get(video.id)

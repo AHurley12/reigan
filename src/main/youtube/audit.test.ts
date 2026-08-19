@@ -286,3 +286,26 @@ describe('statistics helpers', () => {
     expect(pearson([1, 1, 1, 1], [1, 2, 3, 4])).toBeNull()
   })
 })
+
+describe('CTR analysis availability', () => {
+  it('says CTR analysis is unavailable rather than silently reporting nothing', () => {
+    // No impressions anywhere: the sync no longer collects them, because the
+    // Analytics API has no thumbnail-impression metric to collect.
+    addVideo({ id: 'quiet', title: 'No impression data', ageDays: 200, lifetimeViews: 2000 })
+    addDailyStats('quiet', 28, { views: 20 })
+
+    const finding = runCatalogAudit().find((f) => f.kind === 'ctr_unavailable')
+
+    expect(finding).toBeDefined()
+    expect(finding!.videoId).toBeNull()
+    expect(finding!.severity).toBe('info')
+    expect(finding!.detail).toMatch(/Analytics API/)
+  })
+
+  it('stays quiet when impression data is present', () => {
+    addVideo({ id: 'measured', title: 'Has impressions', ageDays: 200, lifetimeViews: 2000 })
+    addDailyStats('measured', 28, { views: 20, impressions: 200, ctr: 0.1 })
+
+    expect(runCatalogAudit().some((f) => f.kind === 'ctr_unavailable')).toBe(false)
+  })
+})

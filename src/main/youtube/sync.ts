@@ -3,7 +3,6 @@ import { getDatabase } from '../db/database'
 import { CapabilityError, type CapabilityContext } from '../capabilities/types'
 import { analyticsCall, getYouTubeClients, isoDate, meteredCall, parseDuration } from './api'
 import { assertBudget, getQuotaStatus } from './quota'
-import { recordAppError } from '../errors/errorLog'
 
 /**
  * Channel sync.
@@ -273,16 +272,19 @@ async function syncVideoDailyStats(
   const rows = res.data.rows ?? []
   if (rows.length === 0) return 0
 
-  // Impressions and CTR live in a different metric group and are not always
-  // available (they need the channel to be eligible); requested separately so a
-  // failure there does not lose the core stats.
-  const impressions = await fetchImpressions(analytics, videoId, startDate, endDate)
+  // Impressions and CTR are deliberately absent. The Analytics API exposes no
+  // thumbnail-impression metric at all — `impressions` is an ads metric (since
+  // renamed `adImpressions`) and `impressionClickThroughRate` does not exist —
+  // so the request this used to make was rejected as an unknown identifier on
+  // every video, every sync. The columns are left at 0 and `runCatalogAudit`
+  // reports the resulting gap rather than quietly skipping its CTR findings.
+  // Real thumbnail impressions require the Reporting API's `channel_reach_*`
+  // bulk reports, which is a separate ingest this app does not have.
 
   const write = db.transaction(() => {
     for (const row of rows) {
       const [date, views, minutes, avgDuration, avgPercentage, gained, lost, likes, comments] =
         row as [string, number, number, number, number, number, number, number, number]
-      const imp = impressions.get(date)
       upsert.run(
         videoId,
         date,
@@ -292,8 +294,8 @@ async function syncVideoDailyStats(
         avgPercentage ?? 0,
         gained ?? 0,
         lost ?? 0,
-        imp?.impressions ?? 0,
-        imp?.ctr ?? 0,
+        0, // impressions — see above
+        0, // ctr — see above
         likes ?? 0,
         comments ?? 0
       )
@@ -302,62 +304,6 @@ async function syncVideoDailyStats(
   write()
 
   return rows.length
-}
-
-async function fetchImpressions(
-  analytics: ReturnType<typeof getYouTubeClients>['analytics'],
-  videoId: string,
-  startDate: string,
-  endDate: string
-): Promise<Map<string, { impressions: number; ctr: number }>> {
-  const map = new Map<string, { impressions: number; ctr: number }>()
-  try {
-    // Routed through analyticsCall like its two siblings above and below. Going
-    // direct meant this was the one analytics call in the file where an expired
-    // or revoked grant never reached handleInvalidGrant, so the account was
-    // never marked disconnected and the user was never prompted to reconnect.
-    const res = await analyticsCall(`impressions for ${videoId}`, () =>
-      analytics.reports.query({
-        ids: 'channel==MINE',
-        startDate,
-        endDate,
-        dimensions: 'day',
-        metrics: 'impressions,impressionClickThroughRate',
-        filters: `video==${videoId}`,
-      })
-    )
-    for (const row of res.data.rows ?? []) {
-      const [date, impressions, ctr] = row as [string, number, number]
-      map.set(date, { impressions: impressions ?? 0, ctr: ctr ?? 0 })
-    }
-  } catch (err) {
-    // A dead grant is not a missing metric, and the difference decides whether
-    // the sync may keep going. Swallowing it would report success for a channel
-    // the app can no longer read, write zeroed impressions over good rows, and
-    // repeat the failed round trip once per remaining video. Let it out.
-    if (err instanceof CapabilityError && err.code === 'not_connected') throw err
-
-    // Impression metrics are not available for every channel or date range.
-    // Their absence weakens one audit finding; it must not fail the sync.
-    //
-    // Recorded rather than merely swallowed: this is the exact shape of failure
-    // the log exists for. The sync returns success, the audit quietly runs on
-    // less data, and without a row here the only symptom is a finding that
-    // seems wrong for reasons nobody can reconstruct.
-    recordAppError({
-      source: 'youtube',
-      operation: 'impressionMetrics',
-      error: err,
-      subject: videoId,
-      severity: 'warning',
-      context: {
-        startDate,
-        endDate,
-        consequence: 'CTR/impression audit finding computed without data',
-      },
-    })
-  }
-  return map
 }
 
 /**

@@ -37,6 +37,7 @@ const FINDING_GROUPS: Array<{ kind: string; label: string }> = [
   { kind: 'metadata_hygiene', label: 'Metadata hygiene' },
   { kind: 'cadence', label: 'Publishing cadence' },
   { kind: 'title_pattern', label: 'Title patterns' },
+  { kind: 'ctr_unavailable', label: 'Analysis unavailable' },
 ]
 
 /** The quota meter is deliberately at the top and always visible, not buried in settings. */
