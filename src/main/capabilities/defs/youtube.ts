@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { CapabilityError, type AnyCapability, type CapabilityContext } from '../types'
 import { getYouTubeClients, meteredCall } from '../../youtube/api'
 import { syncChannel } from '../../youtube/sync'
+import { ingestReachReports } from '../../youtube/reporting'
 import { listFindings, runCatalogAudit, type AuditFinding } from '../../youtube/audit'
 import { getQuotaStatus } from '../../youtube/quota'
 import {
@@ -63,6 +64,29 @@ export const youtubeCapabilities: AnyCapability[] = [
       `Synced ${r.channelTitle}: ${r.videosSynced} videos, ${r.statsRowsWritten} daily stat rows, ` +
       `${r.quotaUnitsUsed} quota units used, in ${(r.durationMs / 1000).toFixed(1)}s ` +
       `(${r.incremental ? 'incremental' : 'full'}).`,
+  },
+
+  {
+    id: 'youtube.ingestReach',
+    title: 'Ingest YouTube reach reports',
+    description:
+      'Download thumbnail impression and click-through-rate data from the YouTube Reporting API ' +
+      'into the local cache. These metrics are unavailable to the Analytics API the channel sync ' +
+      'uses, and they are what the thumbnail and packaging audit findings run on. ' +
+      'Costs no Data API quota.',
+    risk: 'network',
+    requiresGoogle: true,
+    schema: z.object({}),
+    handler: () => ingestReachReports(),
+    formatResult: (r: Awaited<ReturnType<typeof ingestReachReports>>) =>
+      r.jobCreated
+        ? 'Reach collection started. Google generates the first report within 48 hours, and ' +
+          '30 days of history will backfill with it.'
+        : r.reportsIngested === 0
+          ? 'No new reach reports yet.'
+          : `Ingested ${r.reportsIngested} report(s): ${r.rowsWritten} daily rows` +
+            `${r.rowsSkipped > 0 ? `, ${r.rowsSkipped} skipped for videos not in the catalog` : ''}` +
+            `, in ${(r.durationMs / 1000).toFixed(1)}s.`,
   },
 
   {

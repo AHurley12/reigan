@@ -41,6 +41,22 @@ export function seedSystemJobs(): void {
     enabled: false,
     disabledReason: 'Connect a Google account with YouTube access, then enable this job.',
   })
+
+  ensure({
+    name: 'Ingest YouTube reach reports',
+    capabilityId: 'youtube.ingestReach',
+    scheduleKind: 'daily_at',
+    // Half an hour after the channel sync, so the videos a report references
+    // are already in the catalog — reach rows for an unknown video are dropped.
+    scheduleExpr: '05:30',
+    // Reports Google has already generated stay listed for 60 days, so a missed
+    // night is picked up whole by the next run. Replaying each missed day would
+    // re-download the same files to write the same rows.
+    catchUpPolicy: 'run_once',
+    timeoutMs: 15 * 60_000,
+    enabled: false,
+    disabledReason: 'Connect a Google account with YouTube access, then enable this job.',
+  })
 }
 
 function ensure(params: {
