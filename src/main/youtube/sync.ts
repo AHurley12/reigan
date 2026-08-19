@@ -186,19 +186,7 @@ export async function syncChannel(
   let statsRowsWritten = 0
   let trafficRowsWritten = 0
 
-  const upsertStat = db.prepare(
-    `INSERT INTO yt_daily_stats
-       (video_id, date, views, watch_time_minutes, avg_view_duration_s, avg_view_percentage,
-        subs_gained, subs_lost, impressions, ctr, likes, comments)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(video_id, date) DO UPDATE SET
-       views = excluded.views, watch_time_minutes = excluded.watch_time_minutes,
-       avg_view_duration_s = excluded.avg_view_duration_s,
-       avg_view_percentage = excluded.avg_view_percentage,
-       subs_gained = excluded.subs_gained, subs_lost = excluded.subs_lost,
-       impressions = excluded.impressions, ctr = excluded.ctr,
-       likes = excluded.likes, comments = excluded.comments`
-  )
+  const upsertStat = db.prepare(DAILY_STATS_UPSERT_SQL)
 
   const upsertTraffic = db.prepare(
     `INSERT INTO yt_traffic_sources (video_id, date, source_type, views)
@@ -242,6 +230,27 @@ export async function syncChannel(
     durationMs: Date.now() - startedAt,
   }
 }
+
+/**
+ * The daily-stats write, exported so its regression test exercises this exact
+ * statement rather than a copy that can drift away from it.
+ *
+ * `impressions` and `ctr` appear in the INSERT list — a new row needs a value,
+ * and the sync supplies 0 — but deliberately NOT in the UPDATE clause. Those two
+ * columns belong to `reachIngest`, which fills them from the Reporting API; if
+ * this statement updated them, the 05:00 sync would erase what the 05:30 ingest
+ * wrote, every single night.
+ */
+export const DAILY_STATS_UPSERT_SQL = `INSERT INTO yt_daily_stats
+       (video_id, date, views, watch_time_minutes, avg_view_duration_s, avg_view_percentage,
+        subs_gained, subs_lost, impressions, ctr, likes, comments)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(video_id, date) DO UPDATE SET
+       views = excluded.views, watch_time_minutes = excluded.watch_time_minutes,
+       avg_view_duration_s = excluded.avg_view_duration_s,
+       avg_view_percentage = excluded.avg_view_percentage,
+       subs_gained = excluded.subs_gained, subs_lost = excluded.subs_lost,
+       likes = excluded.likes, comments = excluded.comments`
 
 async function syncVideoDailyStats(
   analytics: ReturnType<typeof getYouTubeClients>['analytics'],
@@ -294,8 +303,8 @@ async function syncVideoDailyStats(
         avgPercentage ?? 0,
         gained ?? 0,
         lost ?? 0,
-        0, // impressions — see above
-        0, // ctr — see above
+        0, // impressions — insert-only default; owned by reachIngest thereafter
+        0, // ctr — insert-only default; owned by reachIngest thereafter
         likes ?? 0,
         comments ?? 0
       )
