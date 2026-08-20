@@ -11,7 +11,6 @@ import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTo
 import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
 import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { buildAgentTools } from '../capabilities/agentTools'
-import { AGENT_MODEL, buildServerTools } from './serverTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
 import type { PersonalityMode } from '../../shared/types'
@@ -55,7 +54,7 @@ function getTools(): DynamicStructuredTool[] {
 function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   const llm = new ChatAnthropic({
     apiKey,
-    model: AGENT_MODEL,
+    model: 'claude-sonnet-4-6',
     streaming: true,
     // claude-sonnet-4-6 isn't in @langchain/anthropic's model allowlist, so its
     // temperature/topP defaults (1 and -1) are sent unconditionally, which the API
@@ -76,28 +75,8 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
     new MessagesPlaceholder('agent_scratchpad'),
   ])
 
-  // Server tools are bound to the model but deliberately kept out of the
-  // executor's dispatch list. Anthropic runs web search and web fetch on its own
-  // infrastructure and returns their results inline, so there is no local
-  // handler for the executor to route a call to. LangChain already agrees:
-  // `server_tool_use` and `web_search_tool_result` blocks parse with an empty
-  // `tool_call_chunks`, so they never surface as a pending call the executor
-  // would try — and fail — to dispatch.
-  const agent = createToolCallingAgent({
-    llm,
-    // `tools` is typed `StructuredToolInterface[] | ToolDefinition[]`, a union
-    // that cannot express "local tools plus server-tool definitions". The cast
-    // is safe because this array is only ever forwarded to
-    // `ChatAnthropic.bindTools`, which passes anything matching a built-in tool
-    // prefix straight through to the API untouched.
-    tools: [...tools, ...buildServerTools(AGENT_MODEL)] as never,
-    prompt,
-  })
-
-  // Raised from 5. A web-backed answer spends iterations before it can even
-  // start: search, open one or two results, then reply — which left almost no
-  // room for the local tools the model still needs in the same turn.
-  return new AgentExecutor({ agent, tools, maxIterations: 12 })
+  const agent = createToolCallingAgent({ llm, tools, prompt })
+  return new AgentExecutor({ agent, tools, maxIterations: 5 })
 }
 
 export async function* streamResponse(
