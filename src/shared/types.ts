@@ -52,6 +52,7 @@ export interface Task {
 // ── Settings ──
 export interface AppSettings {
   anthropicApiKey: string;
+  tavilyApiKey: string;
   japaneseLevel: JapaneseLevel;
   showFurigana: boolean;
   showRomaji: boolean;

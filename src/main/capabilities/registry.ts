@@ -1,4 +1,4 @@
-import { requestApproval } from './approval'
+import { requestApproval, hasSessionGrant, recordSessionGrant } from './approval'
 import { recordInvocation, type AuditOutcome } from './audit'
 import { getDecodedSetting } from '../db/queries'
 import {
@@ -72,6 +72,15 @@ export function registerCapability<TArgs, TResult>(def: CapabilityDef<TArgs, TRe
     )
   }
 
+  // Same rule for the tier-independent axis: a policy that says "ask the user"
+  // with nothing to show them would reach `cap.approval!` at dispatch and crash.
+  if (def.approvalPolicy && !def.approval) {
+    throw new Error(
+      `Capability "${def.id}" declares approvalPolicy:${def.approvalPolicy} and must also ` +
+        'declare an approval spec — there is nothing to put on the card without one.'
+    )
+  }
+
   if (def.uiOnly && !def.uiOnlyReason) {
     throw new Error(
       `Capability "${def.id}" is uiOnly but gives no uiOnlyReason. ` +
@@ -99,7 +108,7 @@ export function listCapabilities(): CapabilityInfo[] {
       risk: c.risk,
       uiOnly: !!c.uiOnly,
       uiOnlyReason: c.uiOnlyReason,
-      requiresApproval: c.risk === 'write' || c.risk === 'destructive',
+      requiresApproval: c.risk === 'write' || c.risk === 'destructive' || !!c.approvalPolicy,
       requiresGoogle: !!c.requiresGoogle,
     }))
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -192,7 +201,16 @@ export async function invokeCapability(
     }
   }
 
-  const needsApproval = effectiveRisk === 'write' || effectiveRisk === 'destructive'
+  const tierNeedsApproval = effectiveRisk === 'write' || effectiveRisk === 'destructive'
+
+  // The tier-independent axis. 'always' is never satisfied in advance; 'session'
+  // is satisfied by an approval already given in this conversation. Checked
+  // before the prompt so a granted capability costs nothing on later calls.
+  const policyNeedsApproval =
+    cap.approvalPolicy === 'always' ||
+    (cap.approvalPolicy === 'session' && !hasSessionGrant(cap.id))
+
+  const needsApproval = tierNeedsApproval || policyNeedsApproval
   if (needsApproval && (ctx.invokedBy !== 'ui' || requireApprovalForAll())) {
     const spec = cap.approval!
     let diff: CapabilityDiff | null = null
@@ -224,6 +242,10 @@ export async function invokeCapability(
         awaitingApprovalId: outcome.approvalId,
       })
     }
+
+    // Approved. Only a 'session' policy banks it — a tier-driven approval covers
+    // this call alone, and 'always' means what it says.
+    if (cap.approvalPolicy === 'session') recordSessionGrant(cap.id)
   }
 
   try {

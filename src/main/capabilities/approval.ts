@@ -64,6 +64,46 @@ export function setApprovalNotifier(fn: (request: ApprovalRequest) => void): voi
   notifier = fn
 }
 
+/**
+ * Per-conversation approval grants, for `approvalPolicy: 'session'`.
+ *
+ * Keyed to the conversation rather than to a timer or the process lifetime: a
+ * grant the user gave while asking about one topic should not still be in force
+ * when they open a new chat tomorrow, and "the conversation" is the unit they
+ * actually reason about when they click Approve. `src/main/ipc/llm.ts` already
+ * tracks the active conversation, so this rides on a boundary that exists
+ * rather than inventing a session concept to sit beside it.
+ *
+ * In memory only, deliberately. A grant that survives a restart is one the user
+ * cannot remember giving.
+ */
+let grantedConversationId: string | null = null
+const sessionGrants = new Set<string>()
+
+/**
+ * Points the grant store at the conversation now in progress, clearing grants
+ * if it changed. Idempotent, so the LLM handler can call it on every message.
+ */
+export function setApprovalConversation(conversationId: string): void {
+  if (conversationId === grantedConversationId) return
+  grantedConversationId = conversationId
+  sessionGrants.clear()
+}
+
+export function hasSessionGrant(capabilityId: string): boolean {
+  return sessionGrants.has(capabilityId)
+}
+
+export function recordSessionGrant(capabilityId: string): void {
+  sessionGrants.add(capabilityId)
+}
+
+/** Test-only, and for a full sign-out where nothing prior should carry over. */
+export function clearSessionGrants(): void {
+  grantedConversationId = null
+  sessionGrants.clear()
+}
+
 interface RequestParams {
   capabilityId: string
   title: string

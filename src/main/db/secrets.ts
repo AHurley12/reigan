@@ -28,6 +28,7 @@ const ENC_PREFIX = 'enc:v1:'
  */
 export const SECRET_SETTING_KEYS = new Set([
   'anthropicApiKey',
+  'tavilyApiKey',
   'deepgramApiKey',
   'elevenLabsApiKey',
   'googleClientSecret',

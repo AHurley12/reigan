@@ -76,7 +76,11 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   ])
 
   const agent = createToolCallingAgent({ llm, tools, prompt })
-  return new AgentExecutor({ agent, tools, maxIterations: 5 })
+
+  // Raised from 5 for web research, which spends iterations before it can even
+  // begin answering: search, read one or two results, then reply — leaving
+  // almost nothing for the local tools the model still needs in the same turn.
+  return new AgentExecutor({ agent, tools, maxIterations: 12 })
 }
 
 export async function* streamResponse(

@@ -4,6 +4,7 @@ import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
+import { setApprovalConversation } from '../capabilities/approval'
 
 let activeConversationId: string | null = null
 
@@ -19,6 +20,12 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     if (!activeConversationId) {
       activeConversationId = conversationId ?? createConversation()
     }
+
+    // Scopes any `approvalPolicy: 'session'` grant to this conversation. Called
+    // per message rather than only on creation, so that a grant given in an
+    // earlier conversation cannot carry into a later one; it no-ops when the id
+    // is unchanged.
+    setApprovalConversation(activeConversationId)
 
     // Save user message
     saveMessage({ conversationId: activeConversationId, role: 'user', content: message })
