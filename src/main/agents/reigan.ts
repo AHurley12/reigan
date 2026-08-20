@@ -76,7 +76,11 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   ])
 
   const agent = createToolCallingAgent({ llm, tools, prompt })
-  return new AgentExecutor({ agent, tools, maxIterations: 5 })
+  // A memory-enabled turn opens with `view /memories` and one or two file reads
+  // before any real work starts, so 5 iterations leaves roughly two for the actual
+  // task. This ceiling is a crude proxy for cost anyway — the intended replacement
+  // is a wall-clock or token budget, which is not built yet.
+  return new AgentExecutor({ agent, tools, maxIterations: 15 })
 }
 
 export async function* streamResponse(
