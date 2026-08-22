@@ -215,7 +215,6 @@ export async function invokeCapability(
       jobRunId: ctx.jobRunId,
     })
 
-    if (outcome.status === 'denied') return auditFail(outcome.reason, 'denied')
     if (outcome.status === 'queued') {
       return audit('awaiting_approval', {
         ok: false,
@@ -223,6 +222,14 @@ export async function invokeCapability(
         errorCode: 'awaiting_approval',
         awaitingApprovalId: outcome.approvalId,
       })
+    }
+
+    // Fail closed. Written as "anything that isn't an approval stops here"
+    // rather than as a list of the statuses that stop, so adding a new
+    // non-approving outcome cannot fall through and run unapproved work — the
+    // shape of the old check, which tested only for `denied` and `queued`.
+    if (outcome.status !== 'approved') {
+      return auditFail(outcome.reason, outcome.status)
     }
   }
 

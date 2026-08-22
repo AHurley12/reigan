@@ -11,7 +11,6 @@ import { registerMailHandlers } from './ipc/mail'
 import { registerAvatarHandlers } from './ipc/avatar'
 import { registerFileHandlers } from './ipc/files'
 import { registerPerformanceHandlers } from './ipc/performance'
-import { registerAgentHandlers } from './ipc/agent'
 import { registerVoiceAuthHandlers } from './ipc/voiceAuth'
 import { stopMonitoring } from './perf/perfMonitor'
 import { getDatabase, closeDatabase } from './db/database'
@@ -152,7 +151,6 @@ if (!gotSingleInstanceLock) {
     registerAvatarHandlers()
     registerFileHandlers()
     registerPerformanceHandlers(mainWindow)
-    registerAgentHandlers(mainWindow)
 
     // Capability registry: declares every capability, then exposes the single
     // generic IPC surface the renderer and the agent both dispatch through.

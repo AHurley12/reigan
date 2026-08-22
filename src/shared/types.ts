@@ -244,13 +244,10 @@ export interface PerfSample {
 }
 
 // ── Agent ──
-/** A pending edit Shingan wants to make — surfaced in the UI for approve/deny before it runs. */
-export interface AgentPermissionRequest {
-  id: string;
-  tool: string;
-  summary: string;
-  detail?: string;
-}
+// `AgentPermissionRequest` and the `agent:permission-*` channels lived here.
+// They were the retired permission gate's wire format, and nothing in the
+// preload or the renderer ever listened for them. Approvals now go through the
+// capability framework's `approval:*` channels — see PendingApproval below.
 
 // ── IPC Channel Names ──
 export const IPC = {
@@ -266,9 +263,6 @@ export const IPC = {
   // System
   SYSTEM_INFO: 'system:info',
   APP_OPEN: 'app:open',
-  // Agent
-  AGENT_PERMISSION_REQUEST: 'agent:permission-request',
-  AGENT_PERMISSION_RESPOND: 'agent:permission-respond',
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',

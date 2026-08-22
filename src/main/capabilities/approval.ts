@@ -46,6 +46,13 @@ export interface ApprovalRequest {
 export type ApprovalOutcome =
   | { status: 'approved' }
   | { status: 'denied'; reason: string }
+  /**
+   * Nobody answered in time. Distinct from `denied` on purpose: reporting a
+   * timeout as the user's decision is what let a dead IPC channel masquerade as
+   * "you denied that" through an entire migration. Only `approved` may proceed —
+   * every consumer must fail closed on anything else.
+   */
+  | { status: 'expired'; reason: string }
   /** Persisted for later; the caller must not proceed now. */
   | { status: 'queued'; approvalId: string }
 
@@ -115,24 +122,29 @@ export async function requestApproval(params: RequestParams): Promise<ApprovalOu
     return { status: 'queued', approvalId: id }
   }
 
-  const approved = await promptLive(request)
-  resolveApprovalRow(id, approved ? 'approved' : 'denied')
+  const result = await promptLive(request)
+  resolveApprovalRow(id, result === 'timeout' ? 'expired' : result)
 
-  return approved
-    ? { status: 'approved' }
-    : { status: 'denied', reason: `The user denied permission for: ${params.summary}` }
+  if (result === 'approved') return { status: 'approved' }
+  if (result === 'denied') {
+    return { status: 'denied', reason: `The user denied permission for: ${params.summary}` }
+  }
+  return { status: 'expired', reason: `No response to the approval prompt for: ${params.summary}` }
 }
 
-function promptLive(request: ApprovalRequest): Promise<boolean> {
+/** What a live prompt came back with. `timeout` is not a decision. */
+type LiveResult = 'approved' | 'denied' | 'timeout'
+
+function promptLive(request: ApprovalRequest): Promise<LiveResult> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       livePending.delete(request.id)
-      resolve(false)
+      resolve('timeout')
     }, INTERACTIVE_TIMEOUT_MS)
 
     livePending.set(request.id, (approved) => {
       clearTimeout(timer)
-      resolve(approved)
+      resolve(approved ? 'approved' : 'denied')
     })
 
     mainWindow!.webContents.send(APPROVAL_REQUEST_CHANNEL, request)
