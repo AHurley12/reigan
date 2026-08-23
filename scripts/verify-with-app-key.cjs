@@ -15,15 +15,23 @@ const { app, safeStorage } = require('electron')
 
 const ENC_PREFIX = 'enc:v1:'
 
+// Must happen before `ready`. Launched as a bare script, Electron resolves userData
+// to %APPDATA%/Electron, and on Windows safeStorage keeps the key that protects the
+// ciphertext in a `Local State` file *inside* that directory. Reading reigan.db while
+// userData still pointed elsewhere meant decrypting with the wrong key, which fails
+// with "Error while decrypting the ciphertext provided to safeStorage.decryptString".
+// Pointing userData at the real app directory makes both the database and the
+// encryption key resolve to the same place the app uses.
+const USER_DATA = path.join(app.getPath('appData'), 'reigan')
+app.setPath('userData', USER_DATA)
+
 function fail(message) {
   console.error(message)
   app.exit(1)
 }
 
 app.whenReady().then(async () => {
-  // Launched as a bare script, Electron would default userData to %APPDATA%/Electron.
-  // Point it at the real app directory so we read the same reigan.db the app uses.
-  const dbPath = path.join(app.getPath('appData'), 'reigan', 'reigan.db')
+  const dbPath = path.join(USER_DATA, 'reigan.db')
 
   let Database
   try {

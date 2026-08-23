@@ -191,7 +191,141 @@ async function probe4() {
         `tool_calls=${JSON.stringify(calls)}`)
 }
 
-const probes = [probe1, probe2, probe3, probe4]
+// ---------------------------------------------------------------------------
+// Probe 5 — control. Same strategy, same history, but through the raw Anthropic
+// SDK. Probe 3 only tells us LangChain surfaced nothing; it cannot distinguish
+// "the API applied no edits" from "the API applied edits and LangChain dropped
+// them on the floor". This probe is the control that separates the two.
+// ---------------------------------------------------------------------------
+async function probe5() {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const raw = new Anthropic({ apiKey })
+
+  const filler = 'The quick brown fox jumps over the lazy dog. '.repeat(220)
+  const messages = [{ role: 'user', content: 'Check the system a few times.' }]
+  for (let i = 0; i < 4; i++) {
+    messages.push({
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: `call_${i}`, name: 'get_system_info', input: { probe: i } }],
+    })
+    messages.push({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: `call_${i}`, content: `Report ${i}: ${filler}` }],
+    })
+  }
+  messages.push({ role: 'user', content: 'Now summarise in one word.' })
+
+  let res
+  try {
+    res = await raw.beta.messages.create({
+      model: MODEL,
+      max_tokens: 64,
+      betas: [CONTEXT_MGMT_BETA],
+      context_management: {
+        edits: [{
+          type: 'clear_tool_uses_20250919',
+          trigger: { type: 'input_tokens', value: 1000 },
+          keep: { type: 'tool_uses', value: 1 },
+        }],
+      },
+      tools: [{
+        name: 'get_system_info',
+        description: 'Returns a system report.',
+        input_schema: { type: 'object', properties: { probe: { type: 'number' } } },
+      }],
+      messages,
+    })
+  } catch (err) {
+    record('5. raw SDK control', false, `Raw SDK request failed: ${String(err?.message ?? err).slice(0, 400)}`)
+    return
+  }
+
+  const cm = res.context_management
+  const edits = cm?.applied_edits
+  const populated = Array.isArray(edits) && edits.length > 0
+
+  record('5. raw SDK control', populated,
+    populated
+      ? `The API DID apply edits: ${JSON.stringify(cm)}\n      ` +
+        `=> combined with probe 3, the edits are real and @langchain/anthropic is not ` +
+        `surfacing them. Read applied_edits from the raw stream, not response_metadata.`
+      : `The API applied no edits either (context_management=${JSON.stringify(cm)}). ` +
+        `=> probe 3's failure is the trigger not firing, not a LangChain bug. ` +
+        `usage.input_tokens=${res.usage?.input_tokens}`)
+}
+
+// ---------------------------------------------------------------------------
+// Probe 6 — locate the surfacing bug. utils/message_outputs.js reads
+// `data.delta.context_management` off the message_delta event. If the API
+// actually puts the field one level up, on the event itself, that lookup can
+// never hit and applied_edits is silently unobservable through LangChain.
+// ---------------------------------------------------------------------------
+async function probe6() {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const raw = new Anthropic({ apiKey })
+
+  const filler = 'The quick brown fox jumps over the lazy dog. '.repeat(220)
+  const messages = [{ role: 'user', content: 'Check the system a few times.' }]
+  for (let i = 0; i < 4; i++) {
+    messages.push({
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: `call_${i}`, name: 'get_system_info', input: { probe: i } }],
+    })
+    messages.push({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: `call_${i}`, content: `Report ${i}: ${filler}` }],
+    })
+  }
+  messages.push({ role: 'user', content: 'Now summarise in one word.' })
+
+  let messageDelta = null
+  try {
+    const stream = await raw.beta.messages.create({
+      model: MODEL,
+      max_tokens: 64,
+      stream: true,
+      betas: [CONTEXT_MGMT_BETA],
+      context_management: {
+        edits: [{
+          type: 'clear_tool_uses_20250919',
+          trigger: { type: 'input_tokens', value: 1000 },
+          keep: { type: 'tool_uses', value: 1 },
+        }],
+      },
+      tools: [{
+        name: 'get_system_info',
+        description: 'Returns a system report.',
+        input_schema: { type: 'object', properties: { probe: { type: 'number' } } },
+      }],
+      messages,
+    })
+    for await (const event of stream) {
+      if (event.type === 'message_delta') messageDelta = event
+    }
+  } catch (err) {
+    record('6. locate the surfacing bug', false, `Raw stream failed: ${String(err?.message ?? err).slice(0, 300)}`)
+    return
+  }
+
+  if (!messageDelta) {
+    record('6. locate the surfacing bug', false, 'No message_delta event seen.')
+    return
+  }
+
+  const onEvent = messageDelta.context_management !== undefined
+  const onDelta = messageDelta.delta?.context_management !== undefined
+
+  record('6. locate the surfacing bug', onEvent || onDelta,
+    `message_delta top-level keys: ${JSON.stringify(Object.keys(messageDelta))}\n      ` +
+    `delta keys: ${JSON.stringify(Object.keys(messageDelta.delta ?? {}))}\n      ` +
+    `context_management on event: ${onEvent} | on event.delta: ${onDelta}\n      ` +
+    (onEvent && !onDelta
+      ? 'CONFIRMED: the field sits on the event, but message_outputs.js looks for it on ' +
+        'event.delta — so the lookup never hits. Read it from the raw stream instead.'
+      : `value: ${JSON.stringify(messageDelta.context_management ?? messageDelta.delta?.context_management)}`))
+}
+
+const probes = [probe1, probe2, probe3, probe4, probe5, probe6]
 for (const p of probes) {
   try {
     await p()
