@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { VoiceOrb } from './VoiceOrb'
 import { AvatarPanel } from './AvatarPanel'
+import { meterHeight } from './meterScale'
 import { useAppStore } from '../../stores/appStore'
 import { useVoiceStore } from '../../stores/voiceStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -137,12 +138,17 @@ export function OrbColumn() {
       <div className={SECTION}>
         <div className="flex items-end gap-1 h-6 justify-center">
           {[orbAudio.bass, orbAudio.mid, orbAudio.amplitude, orbAudio.high, orbAudio.bass].map((level, i) => (
+            /* transition-colors, not transition-all: the heights are already
+               driven frame by frame off an rAF loop, so a transition on height
+               only re-targets a half-finished tween every 16ms — the bars cover
+               a fraction of each step and transients never arrive. Colour still
+               transitions, because that changes on state, not per frame. */
             <div
               key={i}
-              className="w-1 rounded-full transition-all duration-100"
+              className="w-1 rounded-full transition-colors duration-normal"
               style={{
-                height: `${Math.max(12, Math.min(1, level) * 100)}%`,
-                background: reiganState === 'listening' || reiganState === 'speaking' ? 'var(--text-accent)' : 'var(--text-muted)',
+                height: `${meterHeight(level)}%`,
+                background: isActive ? 'var(--text-accent)' : 'var(--text-muted)',
               }}
             />
           ))}
