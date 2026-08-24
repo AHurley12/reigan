@@ -4,6 +4,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { REIGAN_SYSTEM_PROMPT, REIGAN_UNBRIDLED_SYSTEM_PROMPT } from './prompts'
+import { buildContextDigest } from '../context/digest'
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
@@ -16,7 +17,7 @@ import { getDecodedSetting } from '../db/queries'
 import type { PersonalityMode } from '../../shared/types'
 
 let executor: AgentExecutor | null = null
-let executorMode: PersonalityMode | null = null
+let executorKey: string | null = null
 
 function getApiKey(): string {
   return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
@@ -51,7 +52,20 @@ function getTools(): DynamicStructuredTool[] {
   return tools
 }
 
-function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
+/**
+ * The persona plus whatever has been learned about the user.
+ *
+ * Concatenated rather than injected as a ChatPromptTemplate variable:
+ * prompts.ts contains no curly braces today, so a template slot would work —
+ * but the prompts are prose that gets edited often, and a stray brace in a
+ * future edit would be parsed as a template variable and throw at runtime.
+ */
+export function composeSystemPrompt(mode: PersonalityMode, digest: string): string {
+  const persona = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+  return digest ? `${persona}\n\n${digest}` : persona
+}
+
+function buildExecutor(apiKey: string, mode: PersonalityMode, digest: string): AgentExecutor {
   const llm = new ChatAnthropic({
     apiKey,
     model: 'claude-sonnet-4-6',
@@ -66,7 +80,7 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   })
 
   const tools = getTools()
-  const systemPrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+  const systemPrompt = composeSystemPrompt(mode, digest)
 
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
@@ -90,9 +104,12 @@ export async function* streamResponse(
   }
 
   const mode = getPersonalityMode()
-  if (!executor || executorMode !== mode) {
-    executor = buildExecutor(apiKey, mode)
-    executorMode = mode
+  const { text: digest, hash } = buildContextDigest()
+  const cacheKey = `${mode}:${hash}`
+
+  if (!executor || executorKey !== cacheKey) {
+    executor = buildExecutor(apiKey, mode, digest)
+    executorKey = cacheKey
   }
 
   const chatHistory = history.flatMap(m =>
@@ -135,5 +152,5 @@ export async function* streamResponse(
 
 export function resetExecutor(): void {
   executor = null
-  executorMode = null
+  executorKey = null
 }
