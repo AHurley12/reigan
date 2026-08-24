@@ -118,6 +118,35 @@ describe('migration runner', () => {
       expect(tables).toContain(expected)
     }
   })
+
+  it('creates the context layer tables', () => {
+    const db = freshDb()
+    runMigrations(db)
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'context_%'")
+      .all()
+      .map((r) => (r as { name: string }).name)
+      .sort()
+
+    expect(tables).toEqual(['context_facts', 'context_stats'])
+  })
+
+  it('enforces one fact per (kind, key)', () => {
+    const db = freshDb()
+    runMigrations(db)
+
+    const insert = db.prepare(`
+      INSERT INTO context_facts
+        (id, kind, key, body, confidence, source, status, created_at, updated_at, last_seen_at)
+      VALUES (?, 'tendency', 'sie-reschedule', ?, 0.5, 'distilled', 'active', 0, 0, 0)
+    `)
+    insert.run('f1', 'Reschedules the SIE block')
+
+    // Without the unique index the layer accumulates near-duplicate facts and
+    // the digest fills with the same observation phrased six ways.
+    expect(() => insert.run('f2', 'Reschedules the SIE block again')).toThrow(/UNIQUE/)
+  })
 })
 
 describe('addColumnIfMissing', () => {

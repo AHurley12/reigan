@@ -864,6 +864,50 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+  {
+    version: 16,
+    name: 'context-layer',
+    // What Shingan has learned about the user, so a personality built to call
+    // out patterns has an actual record of them instead of a vibe.
+    //
+    // Timestamps are milliseconds (Date.now()), matching every other table the
+    // app writes through TypeScript. The `unixepoch()` defaults elsewhere in
+    // this file are vestigial — no insert path in the codebase omits its
+    // timestamp columns, so they never fire.
+    //
+    // The unique index on (kind, key) is what makes this a *layer* rather than
+    // a log: a repeat observation updates one row instead of appending a near
+    // duplicate that would crowd the digest with the same fact six ways.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS context_facts (
+          id           TEXT PRIMARY KEY,
+          kind         TEXT NOT NULL,
+          key          TEXT NOT NULL,
+          body         TEXT NOT NULL,
+          evidence     TEXT,
+          confidence   REAL NOT NULL DEFAULT 0.5,
+          source       TEXT NOT NULL,
+          status       TEXT NOT NULL DEFAULT 'active',
+          created_at   INTEGER NOT NULL,
+          updated_at   INTEGER NOT NULL,
+          last_seen_at INTEGER NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_context_facts_kind_key
+          ON context_facts(kind, key);
+
+        CREATE INDEX IF NOT EXISTS idx_context_facts_render
+          ON context_facts(status, confidence DESC);
+
+        CREATE TABLE IF NOT EXISTS context_stats (
+          metric      TEXT PRIMARY KEY,
+          value_json  TEXT NOT NULL,
+          computed_at INTEGER NOT NULL
+        );
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */
