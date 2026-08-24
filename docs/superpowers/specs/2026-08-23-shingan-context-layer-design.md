@@ -94,9 +94,9 @@ CREATE TABLE IF NOT EXISTS context_facts (
   confidence   REAL NOT NULL DEFAULT 0.5,
   source       TEXT NOT NULL,   -- distilled | stat | user
   status       TEXT NOT NULL DEFAULT 'active',  -- active | dismissed | superseded
-  created_at   TEXT NOT NULL,
-  updated_at   TEXT NOT NULL,
-  last_seen_at TEXT NOT NULL
+  created_at   INTEGER NOT NULL,   -- milliseconds, Date.now()
+  updated_at   INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_context_facts_kind_key
   ON context_facts (kind, key);
@@ -106,12 +106,17 @@ CREATE INDEX IF NOT EXISTS idx_context_facts_status
 CREATE TABLE IF NOT EXISTS context_stats (
   metric      TEXT PRIMARY KEY,
   value_json  TEXT NOT NULL,
-  computed_at TEXT NOT NULL
+  computed_at INTEGER NOT NULL
 );
 ```
 
 `kind`, `source`, and `status` are validated in TypeScript at the store
 boundary, not by SQL CHECK constraints — consistent with existing tables.
+
+**All timestamps are INTEGER milliseconds** (`Date.now()`). Every insert path in
+this codebase writes milliseconds — `queries.ts`, `jobs/store.ts`, and the
+project scanner — so the `unixepoch()` (seconds) defaults on older tables never
+actually fire. Date arithmetic uses `86_400_000` ms per day throughout.
 
 ### 2. Deterministic stats — `src/main/context/stats.ts`
 
@@ -123,8 +128,8 @@ these values cannot be hallucinated.
 | `tasks.throughput` | `tasks` | created / completed / open, last 30d |
 | `tasks.overdue` | `tasks` | count + oldest overdue age in days |
 | `tasks.latency` | `tasks` | median days from create to complete (SQLite has no `median`; compute in TypeScript over the returned durations, or use a `LIMIT/OFFSET` positional query — do not substitute `AVG`, which a single abandoned task skews badly) |
-| `jobs.reliability` | `jobs`, `job_runs` | run count, failure rate, last failure |
-| `projects.cold` | `projects`, `scan_runs` | projects with no scan activity in 14d+ |
+| `jobs.reliability` | `job_runs` | run count and failure rate over 30d; `timeout` counts as a failure alongside `failure` |
+| `projects.cold` | `projects` | rows whose `status` is `dormant` or `abandoned`, oldest first. No `scan_runs` join needed — `classifyStatus` in `devtools/scanner/detect.ts` already encodes the staleness bands (active ≤14d, warm 15–60, dormant 61–180, abandoned 180+) |
 
 Recomputed on app launch and on a recurring schedule via the existing jobs
 scheduler (`src/main/jobs/scheduler.ts`). Each metric writes one
