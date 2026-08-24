@@ -28,7 +28,7 @@ vi.mock('@langchain/anthropic', () => ({
   ChatAnthropic: vi.fn().mockImplementation(() => ({ invoke: mockInvoke })),
 }))
 
-import { maybeDistill, parseDistillResponse, resetDistillCounters, shouldDistill } from './distill'
+import { boundedLines, maybeDistill, parseDistillResponse, resetDistillCounters, shouldDistill } from './distill'
 
 beforeEach(() => {
   resetDistillCounters()
@@ -129,6 +129,76 @@ describe('parseDistillResponse', () => {
   })
 })
 
+describe('boundedLines', () => {
+  it('stops at the count bound', () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `- l${i}`)
+    expect(boundedLines(lines, 3, 10_000).split('\n')).toHaveLength(3)
+  })
+
+  it('stops at the character bound', () => {
+    const lines = Array.from({ length: 10 }, () => 'x'.repeat(20))
+    // 20 chars plus a newline each: three fit inside 70.
+    expect(boundedLines(lines, 100, 70).split('\n')).toHaveLength(3)
+  })
+
+  it('keeps the head of the list, which arrives confidence-ranked', () => {
+    expect(boundedLines(['high', 'mid', 'low'], 2, 10_000)).toBe('high\nmid')
+  })
+
+  it('renders an empty list as an empty string', () => {
+    expect(boundedLines([], 10, 100)).toBe('')
+  })
+})
+
+describe('runDistillation prompt', () => {
+  function promptText(): string {
+    const messages = mockInvoke.mock.calls[0][0] as Array<{ content: string }>
+    return messages[0].content
+  }
+
+  it('feeds dismissed facts back as a do-not-derive list', async () => {
+    // Suppressing the write alone was not enough: the model never learned the
+    // fact had been rejected, re-derived the same slug from the same
+    // conversation, and burned a paid call doing it on every single pass.
+    mockGetDecodedSetting.mockReturnValue('false')
+    mockListFacts.mockImplementation((opts?: { status?: string }) =>
+      opts?.status === 'dismissed'
+        ? [{ kind: 'goal', key: 'sie-exam', body: 'Wants to pass the SIE', confidence: 0.5 }]
+        : [{ kind: 'duty', key: 'day-job', body: 'Works evenings', confidence: 0.9 }],
+    )
+    mockInvoke.mockResolvedValue({ content: '[]' })
+    for (let i = 0; i < 3; i++) shouldDistill('c-prompt', LONG)
+
+    maybeDistill('c-prompt', LONG, [{ role: 'user', content: LONG }], 'sk-test')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const prompt = promptText()
+    expect(prompt).toContain('REJECTED (do not re-derive these):')
+    expect(prompt).toContain('- goal/sie-exam')
+    expect(prompt).toContain('- [duty/day-job] Works evenings')
+  })
+
+  it('caps the existing-fact block instead of growing with the table', async () => {
+    // The digest is hard-capped at 4800 chars; this sibling input was not, and
+    // nothing is ever hard-deleted, so it could only grow.
+    mockGetDecodedSetting.mockReturnValue('false')
+    mockListFacts.mockImplementation((opts?: { status?: string }) =>
+      opts?.status === 'dismissed'
+        ? []
+        : Array.from({ length: 500 }, (_, i) => ({ kind: 'goal', key: `k${i}`, body: 'b'.repeat(80), confidence: 0.5 })),
+    )
+    mockInvoke.mockResolvedValue({ content: '[]' })
+    for (let i = 0; i < 3; i++) shouldDistill('c-cap', LONG)
+
+    maybeDistill('c-cap', LONG, [{ role: 'user', content: 'short' }], 'sk-test')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const block = promptText().split('EXISTING FACTS:\n')[1].split('\n\nREJECTED')[0]
+    expect(block.length).toBeLessThanOrEqual(2400)
+    expect(block.split('\n').length).toBeLessThanOrEqual(40)
+  })
+})
+
 describe('maybeDistill', () => {
   it('short-circuits before any work when contextLearningPaused is the string "true"', () => {
     // Settings persist as JSON.stringify(value), so a paused boolean lands in
@@ -154,6 +224,23 @@ describe('maybeDistill', () => {
 
     expect(mockInvoke).not.toHaveBeenCalled()
     expect(mockListFacts).not.toHaveBeenCalled()
+  })
+
+  it('records a missing key once, rather than failing to learn in silence', () => {
+    // The key can come from the environment, in which case the settings row is
+    // empty. Bailing with no record meant chat worked, the digest stayed empty
+    // forever, and nothing anywhere said why.
+    mockGetDecodedSetting.mockReturnValue('false')
+    for (let i = 0; i < 3; i++) shouldDistill('c-warn', LONG)
+
+    maybeDistill('c-warn', LONG, [], '')
+    maybeDistill('c-warn', LONG, [], '')
+    maybeDistill('c-warn', LONG, [], '')
+
+    expect(mockRecordAppError).toHaveBeenCalledTimes(1)
+    expect(mockRecordAppError).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'contextDistillation', severity: 'warning' }),
+    )
   })
 
   it('routes a rejected runDistillation to recordAppError with severity warning, without throwing', async () => {

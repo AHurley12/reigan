@@ -9,11 +9,45 @@ const MIN_EXCHANGE_CHARS = 200
 const MAX_FACTS_PER_PASS = 12
 const DISTILL_MODEL = 'claude-haiku-4-5-20251001'
 
+/**
+ * Bounds on the two fact lists handed to the model.
+ *
+ * Both are unbounded by nature: nothing is ever hard-deleted, so the active
+ * table and the dismissed table only grow. The digest gets a hard 4800-char
+ * (~1200 token) cap for exactly this reason and this sibling input needs the
+ * same discipline — an uncapped `EXISTING FACTS` block would eventually cost
+ * more per pass than the conversation it is meant to interpret.
+ *
+ * Half the digest's budget for existing facts (they carry a full sentence
+ * each) and a quarter for rejected keys (a `kind/key` pair is short). Both
+ * lists arrive confidence-ranked, so the cap drops the least-supported entries
+ * first — the same rule the digest truncates by.
+ */
+const MAX_EXISTING_FACTS = 40
+const MAX_EXISTING_CHARS = 2400
+const MAX_REJECTED_KEYS = 40
+const MAX_REJECTED_CHARS = 1200
+
 const turnCounters = new Map<string, number>()
+let warnedMissingKey = false
 
 /** Test seam — module state would otherwise leak between cases. */
 export function resetDistillCounters(): void {
   turnCounters.clear()
+  warnedMissingKey = false
+}
+
+/** Takes lines in rank order until either bound is reached. */
+export function boundedLines(lines: string[], maxCount: number, maxChars: number): string {
+  const kept: string[] = []
+  let used = 0
+  for (const line of lines) {
+    if (kept.length >= maxCount) break
+    if (used + line.length + 1 > maxChars) break
+    kept.push(line)
+    used += line.length + 1
+  }
+  return kept.join('\n')
 }
 
 /**
@@ -51,7 +85,7 @@ export function shouldDistill(conversationId: string, exchange: string): boolean
  * structurally-valid-but-false facts that pass parsing cleanly and get
  * written. Template interpolation has neither hazard.
  */
-function buildDistillPrompt(existing: string, conversation: string): string {
+function buildDistillPrompt(existing: string, rejected: string, conversation: string): string {
   return `You maintain a factual profile of one person, used by their personal assistant.
 
 From the conversation below, extract only DURABLE facts about the person — their duties, roles, active projects, stated goals, and behavioural tendencies. A durable fact is still true next month.
@@ -66,8 +100,13 @@ Return ONLY a JSON array, no prose. Each element:
 
 Reuse an existing key verbatim when you are updating that same fact. Return [] if nothing durable appeared.
 
+The user has already rejected the facts listed under REJECTED. Never return one of those kind/key pairs, and do not restate the same claim under a different key or wording.
+
 EXISTING FACTS:
 ${existing}
+
+REJECTED (do not re-derive these):
+${rejected}
 
 CONVERSATION:
 ${conversation}`
@@ -127,9 +166,22 @@ export async function runDistillation(
   turns: Array<{ role: 'user' | 'assistant'; content: string }>,
   apiKey: string,
 ): Promise<number> {
-  const existing = listFacts()
-    .map((f) => `- [${f.kind}/${f.key}] ${f.body}`)
-    .join('\n')
+  // Dismissed facts are fed back as a do-not-derive list. Suppressing the
+  // write alone was not enough: the model never learned the fact had been
+  // rejected, re-derived the same stable slug from the same conversation, and
+  // handed it back on every pass — burning a paid call each time to produce
+  // something that is discarded on arrival.
+  const existing = boundedLines(
+    listFacts().map((f) => `- [${f.kind}/${f.key}] ${f.body}`),
+    MAX_EXISTING_FACTS,
+    MAX_EXISTING_CHARS,
+  )
+
+  const rejected = boundedLines(
+    listFacts({ status: 'dismissed' }).map((f) => `- ${f.kind}/${f.key}`),
+    MAX_REJECTED_KEYS,
+    MAX_REJECTED_CHARS,
+  )
 
   const conversation = turns
     .slice(-8)
@@ -147,7 +199,7 @@ export async function runDistillation(
   const reply = await llm.invoke([
     {
       role: 'user',
-      content: buildDistillPrompt(existing || '(none yet)', conversation),
+      content: buildDistillPrompt(existing || '(none yet)', rejected || '(none)', conversation),
     },
   ])
 
@@ -179,7 +231,25 @@ export function maybeDistill(
   apiKey: string,
 ): void {
   if (getDecodedSetting('contextLearningPaused') === 'true') return
-  if (!apiKey) return
+
+  if (!apiKey) {
+    // Learning that never starts is the failure mode with no symptom this
+    // module exists to avoid: chat works, the digest stays empty forever, and
+    // nothing anywhere says why. Recorded once per process — a per-turn entry
+    // would bury the error log.
+    if (!warnedMissingKey) {
+      warnedMissingKey = true
+      recordAppError({
+        source: 'llm',
+        operation: 'contextDistillation',
+        error: new Error('No Anthropic API key available to the context layer'),
+        severity: 'warning',
+        context: { consequence: 'context layer is not learning anything at all' },
+      })
+    }
+    return
+  }
+
   if (!shouldDistill(conversationId, exchange)) return
 
   void runDistillation(turns, apiKey).catch((err) => {

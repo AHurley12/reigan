@@ -8,6 +8,19 @@ import { maybeDistill } from '../context/distill'
 
 let activeConversationId: string | null = null
 
+/**
+ * The key the agent will actually use.
+ *
+ * `reigan.ts` reads the setting and falls back to `ANTHROPIC_API_KEY`, so
+ * anything here that consults only the setting disagrees with the module doing
+ * the work. That disagreement silently disabled the context layer for anyone
+ * running from the environment: the distiller received `''` and bailed with no
+ * record, so chat behaved normally and learning never started.
+ */
+function getAnthropicKey(): string {
+  return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
+}
+
 export function registerLLMHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC.LLM_SEND, async (_event, payload: {
     message: string
@@ -25,7 +38,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     saveMessage({ conversationId: activeConversationId, role: 'user', content: message })
 
     let fullResponse = ''
-    const hasKey = !!getDecodedSetting('anthropicApiKey')
+    const hasKey = !!getAnthropicKey()
 
     if (!hasKey) {
       const placeholder = 'REIGAN is not yet connected. Add your Anthropic API key in Settings (Ctrl+,).'
@@ -64,7 +77,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       activeConversationId,
       message + fullResponse,
       [...history, { role: 'user', content: message }, { role: 'assistant', content: fullResponse }],
-      getDecodedSetting('anthropicApiKey') ?? '',
+      getAnthropicKey(),
     )
 
     const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
