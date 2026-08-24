@@ -1,3 +1,5 @@
+import type { ContextFact } from '../../../shared/types'
+
 declare global {
   interface Window {
     reigan: {
@@ -12,6 +14,11 @@ declare global {
       setSetting: (key: string, value: string) => Promise<void>
       getAllSettings: () => Promise<Record<string, string>>
       getSecretPreviews: () => Promise<Record<string, { hasValue: boolean; last4: string }>>
+      listContextFacts: () => Promise<{ active: ContextFact[]; dismissed: ContextFact[] }>
+      editContextFact: (id: string, body: string) => Promise<ContextFact | null>
+      dismissContextFact: (id: string) => Promise<{ ok: boolean }>
+      clearContextFacts: () => Promise<{ ok: boolean }>
+      refreshContextStats: () => Promise<unknown>
       getSystemInfo: () => Promise<any>
       voice: {
         startListening: () => Promise<void>

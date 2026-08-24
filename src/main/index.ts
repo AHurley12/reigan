@@ -12,6 +12,8 @@ import { registerAvatarHandlers } from './ipc/avatar'
 import { registerFileHandlers } from './ipc/files'
 import { registerPerformanceHandlers } from './ipc/performance'
 import { registerVoiceAuthHandlers } from './ipc/voiceAuth'
+import { registerContextHandlers } from './ipc/context'
+import { refreshStats } from './context/stats'
 import { stopMonitoring } from './perf/perfMonitor'
 import { getDatabase, closeDatabase } from './db/database'
 import { getDecodedSetting } from './db/queries'
@@ -151,6 +153,7 @@ if (!gotSingleInstanceLock) {
     registerAvatarHandlers()
     registerFileHandlers()
     registerPerformanceHandlers(mainWindow)
+    registerContextHandlers()
 
     // Capability registry: declares every capability, then exposes the single
     // generic IPC surface the renderer and the agent both dispatch through.
@@ -168,6 +171,14 @@ if (!gotSingleInstanceLock) {
     // Registered last: initialise() locks the session, so anything above that
     // wants to run at startup does so before the gate closes.
     registerVoiceAuthHandlers(mainWindow)
+
+    // Cheap: five aggregate queries against local SQLite. Guarded because a
+    // stats failure must not stop the window from opening.
+    try {
+      refreshStats()
+    } catch (err) {
+      console.error('[context] initial stats refresh failed:', err)
+    }
 
     // The file index is now the "Rebuild file index" job (seeded in jobs/seed.ts)
     // rather than an untracked boot-time side effect, so its runs, failures and

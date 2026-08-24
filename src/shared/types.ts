@@ -295,6 +295,12 @@ export const IPC = {
   // Credential metadata (hasValue + last 4). The values themselves never
   // cross to the renderer — see db/queries.ts getSettingsForRenderer().
   SETTINGS_SECRET_PREVIEWS: 'settings:secret-previews',
+  // Context layer
+  CONTEXT_LIST_FACTS: 'context:list-facts',
+  CONTEXT_EDIT_FACT: 'context:edit-fact',
+  CONTEXT_DISMISS_FACT: 'context:dismiss-fact',
+  CONTEXT_CLEAR_FACTS: 'context:clear-facts',
+  CONTEXT_REFRESH_STATS: 'context:refresh-stats',
   // Voice
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',

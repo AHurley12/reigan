@@ -46,6 +46,13 @@ const api = {
   getAllSettings: () => ipcRenderer.invoke(IPC.SETTINGS_LOAD_ALL),
   getSecretPreviews: () => ipcRenderer.invoke(IPC.SETTINGS_SECRET_PREVIEWS),
 
+  // Context layer
+  listContextFacts: () => ipcRenderer.invoke(IPC.CONTEXT_LIST_FACTS),
+  editContextFact: (id: string, body: string) => ipcRenderer.invoke(IPC.CONTEXT_EDIT_FACT, { id, body }),
+  dismissContextFact: (id: string) => ipcRenderer.invoke(IPC.CONTEXT_DISMISS_FACT, id),
+  clearContextFacts: () => ipcRenderer.invoke(IPC.CONTEXT_CLEAR_FACTS),
+  refreshContextStats: () => ipcRenderer.invoke(IPC.CONTEXT_REFRESH_STATS),
+
   // System
   getSystemInfo: () => ipcRenderer.invoke(IPC.SYSTEM_INFO),
 
