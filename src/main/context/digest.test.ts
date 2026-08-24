@@ -44,6 +44,16 @@ describe('renderDigest', () => {
   it('drops facts below the render threshold', () => {
     const out = renderDigest([fact({ key: 'weak', body: 'Barely supported', confidence: 0.2 })], {})
     expect(out).not.toContain('Barely supported')
+    expect(out).toBe('')
+  })
+
+  it('renders nothing when the only fact cannot fit under the cap', () => {
+    // Regression: the emptiness guard used to check the pre-truncation `ranked`
+    // array instead of the post-truncation `kept` array, so a single
+    // over-budget fact with no stats would still emit a bare header/footer
+    // scaffold with zero actual content.
+    const out = renderDigest([fact({ key: 'huge', body: 'x'.repeat(5000), confidence: 0.9 })], {})
+    expect(out).toBe('')
   })
 
   it('marks user-authored facts as ground truth', () => {

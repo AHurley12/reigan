@@ -28,7 +28,6 @@ export function renderDigest(facts: ContextFact[], stats: Partial<ContextStats>)
     .sort((a, b) => b.confidence - a.confidence)
 
   const statLines = renderStatLines(stats)
-  if (ranked.length === 0 && statLines.length === 0) return ''
 
   const header = '## What you know about this user\n'
   const footer =
@@ -51,6 +50,8 @@ export function renderDigest(facts: ContextFact[], stats: Partial<ContextStats>)
     kept.push(f)
     used += line.length
   }
+
+  if (kept.length === 0 && statLines.length === 0) return ''
 
   const sections: string[] = []
   const seenHeadings = new Set<string>()
