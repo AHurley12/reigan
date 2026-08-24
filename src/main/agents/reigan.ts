@@ -2,7 +2,7 @@ import { ChatAnthropic } from '@langchain/anthropic'
 import { AgentExecutor, createToolCallingAgent } from 'langchain/agents'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
-import { HumanMessage, AIMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages'
 import { REIGAN_SYSTEM_PROMPT, REIGAN_UNBRIDLED_SYSTEM_PROMPT } from './prompts'
 import { buildContextDigest } from '../context/digest'
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
@@ -55,14 +55,40 @@ function getTools(): DynamicStructuredTool[] {
 /**
  * The persona plus whatever has been learned about the user.
  *
- * Concatenated rather than injected as a ChatPromptTemplate variable:
- * prompts.ts contains no curly braces today, so a template slot would work —
- * but the prompts are prose that gets edited often, and a stray brace in a
- * future edit would be parsed as a template variable and throw at runtime.
+ * The digest is user-derived text (fact bodies typed or paraphrased from the
+ * user, project and job names pulled from stats) and is never escaped for
+ * curly braces. It must never reach a ChatPromptTemplate string slot — see
+ * buildPromptTemplate, which passes the composed result in as a SystemMessage
+ * instance specifically so it is never parsed as a template variable.
  */
 export function composeSystemPrompt(mode: PersonalityMode, digest: string): string {
   const persona = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
   return digest ? `${persona}\n\n${digest}` : persona
+}
+
+/**
+ * Builds the chat prompt template for a given (already-composed) system
+ * prompt.
+ *
+ * The system message is passed as a SystemMessage instance rather than a
+ * `['system', systemPrompt]` tuple. ChatPromptTemplate.fromMessages
+ * f-string-parses tuple/string entries for `{var}` placeholders — which is
+ * why `['human', '{input}']` below resolves against the `input` run
+ * variable. The composed system prompt is not static template prose: it
+ * carries the context digest, which embeds arbitrary user-typed fact text
+ * and project/job names verbatim and unescaped. A literal brace in any of
+ * that — "Sprint {42} retro", a pasted snippet, a ticket reference — would
+ * be read as an unfulfilled template variable and throw when the prompt is
+ * formatted. A BaseMessage instance is passed through untouched by
+ * fromMessages, so the digest can contain any text without risk.
+ */
+export function buildPromptTemplate(systemPrompt: string): ChatPromptTemplate {
+  return ChatPromptTemplate.fromMessages([
+    new SystemMessage(systemPrompt),
+    new MessagesPlaceholder('chat_history'),
+    ['human', '{input}'],
+    new MessagesPlaceholder('agent_scratchpad'),
+  ])
 }
 
 function buildExecutor(apiKey: string, mode: PersonalityMode, digest: string): AgentExecutor {
@@ -81,13 +107,7 @@ function buildExecutor(apiKey: string, mode: PersonalityMode, digest: string): A
 
   const tools = getTools()
   const systemPrompt = composeSystemPrompt(mode, digest)
-
-  const prompt = ChatPromptTemplate.fromMessages([
-    ['system', systemPrompt],
-    new MessagesPlaceholder('chat_history'),
-    ['human', '{input}'],
-    new MessagesPlaceholder('agent_scratchpad'),
-  ])
+  const prompt = buildPromptTemplate(systemPrompt)
 
   const agent = createToolCallingAgent({ llm, tools, prompt })
   return new AgentExecutor({ agent, tools, maxIterations: 5 })
