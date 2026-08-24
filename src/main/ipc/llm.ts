@@ -4,6 +4,7 @@ import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
+import { maybeDistill } from '../context/distill'
 
 let activeConversationId: string | null = null
 
@@ -56,6 +57,15 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
 
     mainWindow.webContents.send(IPC.LLM_STREAM, { token: '', done: true, conversationId: activeConversationId })
     saveMessage({ conversationId: activeConversationId, role: 'assistant', content: fullResponse })
+
+    // Fire-and-forget. Learning must never delay or break a reply, so this is
+    // deliberately not awaited — see maybeDistill's own error handling.
+    maybeDistill(
+      activeConversationId,
+      message + fullResponse,
+      [...history, { role: 'user', content: message }, { role: 'assistant', content: fullResponse }],
+      getDecodedSetting('anthropicApiKey') ?? '',
+    )
 
     const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
     const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'

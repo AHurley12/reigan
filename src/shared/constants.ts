@@ -44,6 +44,7 @@ export const DEFAULT_SETTINGS = {
   audioOutputDeviceId: 'default',
   personalityMode: 'standard' as const,
   unbridledModeAcknowledged: false,
+  contextLearningPaused: false,
   avatarModelChoice: 'riruka',
   avatarCustomModelLabel: '',
   voiceOrbStyle: 'nebula',

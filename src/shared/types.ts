@@ -94,6 +94,8 @@ export interface AppSettings {
   audioOutputDeviceId: string;
   personalityMode: PersonalityMode;
   unbridledModeAcknowledged: boolean;
+  /** Halts distillation. Existing facts stay and keep feeding the digest. */
+  contextLearningPaused: boolean;
   avatarModelChoice: string;
   avatarCustomModelLabel: string;
   voiceOrbStyle: string;

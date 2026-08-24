@@ -15,6 +15,7 @@ const EDITABLE_KEYS = [
   'japaneseLevel', 'showFurigana', 'showRomaji', 'voiceResponseMode', 'particleCount',
   'voiceId', 'pushToTalk', 'ttsStability', 'ttsSimilarity', 'showOrbColumn', 'motion',
   'audioInputDeviceId', 'audioOutputDeviceId', 'personalityMode', 'unbridledModeAcknowledged',
+  'contextLearningPaused',
   'avatarModelChoice', 'avatarCustomModelLabel', 'voiceOrbStyle',
 ] as const
 
