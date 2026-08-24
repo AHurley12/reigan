@@ -970,6 +970,7 @@ export function computeStats(db: Database.Database, now = Date.now()): ContextSt
     .all() as Array<{ name: string; last_modified: number }>)
 
   const failures = jobs.failures ?? 0
+  const medianDuration = median(durations)
 
   return {
     tasksThroughput: { created, completed, open },
@@ -977,7 +978,7 @@ export function computeStats(db: Database.Database, now = Date.now()): ContextSt
       count: overdue.c,
       oldestDays: overdue.oldest === null ? 0 : Math.floor((now - overdue.oldest) / DAY_MS),
     },
-    tasksLatencyDays: median(durations) === null ? null : Math.round(median(durations)! / DAY_MS),
+    tasksLatencyDays: medianDuration === null ? null : Math.round(medianDuration / DAY_MS),
     jobsReliability: {
       runs: jobs.runs,
       failures,
@@ -1203,7 +1204,12 @@ export function renderDigest(facts: ContextFact[], stats: Partial<ContextStats>)
     'Never invent a pattern, a count, or a date to make a better line — a confident wrong callout costs you ' +
     'more than saying nothing. Items marked (stated directly) came from the user and are ground truth.\n'
 
-  const budget = MAX_DIGEST_CHARS - header.length - footer.length - statLines.join('\n').length - 32
+  // 160 chars reserved for section headings: up to three fact groups plus
+  // "Current numbers", at roughly 40 each. The cap is hard, so the slack has to
+  // cover the worst case rather than the one-heading common case.
+  const HEADING_SLACK = 160
+  const budget =
+    MAX_DIGEST_CHARS - header.length - footer.length - statLines.join('\n').length - HEADING_SLACK
 
   const kept: ContextFact[] = []
   let used = 0
@@ -1808,7 +1814,9 @@ git commit -m "feat(context): debounced distillation of durable facts after chat
 
 **Interfaces:**
 - Consumes: `listFacts`, `editFactBody`, `dismissFact`, `clearAllFacts` from Task 3; `refreshStats` from Task 4.
-- Produces: `registerContextHandlers(): void`; `window.api.listContextFacts/editContextFact/dismissContextFact/clearContextFacts/refreshContextStats`.
+- Produces: `registerContextHandlers(): void`; `window.reigan.listContextFacts/editContextFact/dismissContextFact/clearContextFacts/refreshContextStats`.
+
+**Note:** the preload bridge is exposed as `window.reigan` (`preload/index.ts:203`), **not** `window.api`. Its TypeScript surface is the `Window.reigan` interface declared in `src/renderer/src/hooks/useIPC.ts` — there is no `.d.ts` file.
 
 - [ ] **Step 1: Add the IPC channels**
 
@@ -1872,6 +1880,24 @@ In `src/preload/index.ts`, inside the `api` object after the Settings group:
   refreshContextStats: () => ipcRenderer.invoke(IPC.CONTEXT_REFRESH_STATS),
 ```
 
+- [ ] **Step 3b: Declare the bridge types**
+
+In `src/renderer/src/hooks/useIPC.ts`, inside `declare global { interface Window { reigan: { ... } } }`, add after the `getSecretPreviews` line:
+
+```ts
+      listContextFacts: () => Promise<{ active: ContextFact[]; dismissed: ContextFact[] }>
+      editContextFact: (id: string, body: string) => Promise<ContextFact | null>
+      dismissContextFact: (id: string) => Promise<{ ok: boolean }>
+      clearContextFacts: () => Promise<{ ok: boolean }>
+      refreshContextStats: () => Promise<unknown>
+```
+
+and add the type import at the top of the file:
+
+```ts
+import type { ContextFact } from '../../../shared/types'
+```
+
 - [ ] **Step 4: Register at boot**
 
 In `src/main/index.ts`, add the import beside the other IPC imports (~line 14):
@@ -1925,7 +1951,7 @@ git commit -m "feat(context): IPC surface and boot-time stats refresh"
 - Modify: `src/renderer/src/components/Settings/settingsRegistry.ts`
 
 **Interfaces:**
-- Consumes: `window.api.listContextFacts/editContextFact/dismissContextFact/clearContextFacts` from Task 8; `contextLearningPaused` setting from Task 7.
+- Consumes: `window.reigan.listContextFacts/editContextFact/dismissContextFact/clearContextFacts` from Task 8; `contextLearningPaused` setting from Task 7.
 - Produces: `ContextSettings` component; one `SETTINGS_TABS` entry with `id: 'context'`.
 
 - [ ] **Step 1: Build the tab**
@@ -1958,7 +1984,7 @@ export function ContextSettings() {
   const [confirmClear, setConfirmClear] = useState(false)
 
   const load = async () => {
-    const result = await window.api.listContextFacts()
+    const result = await window.reigan.listContextFacts()
     setFacts(result.active)
   }
 
@@ -1973,19 +1999,19 @@ export function ContextSettings() {
 
   const saveEdit = async (id: string) => {
     if (!draft.trim()) return
-    await window.api.editContextFact(id, draft.trim())
+    await window.reigan.editContextFact(id, draft.trim())
     setEditingId(null)
     await load()
     push('Correction saved — Shingan will treat this as ground truth', 'info')
   }
 
   const dismiss = async (id: string) => {
-    await window.api.dismissContextFact(id)
+    await window.reigan.dismissContextFact(id)
     await load()
   }
 
   const clearAll = async () => {
-    await window.api.clearContextFacts()
+    await window.reigan.clearContextFacts()
     setConfirmClear(false)
     await load()
     push('Cleared everything Shingan had learned', 'info')
@@ -2117,7 +2143,7 @@ import { ContextSettings } from './tabs/ContextSettings'
 - [ ] **Step 3: Verify it builds**
 
 Run: `npm run build`
-Expected: build succeeds. If `window.api` types are declared in a `.d.ts`, add the five methods from Task 8 Step 3 there too.
+Expected: build succeeds. The bridge types were already added to `src/renderer/src/hooks/useIPC.ts` in Task 8 Step 3b, so `window.reigan.listContextFacts` etc. resolve here.
 
 - [ ] **Step 4: Manual check**
 
