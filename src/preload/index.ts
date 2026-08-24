@@ -50,6 +50,8 @@ const api = {
   listContextFacts: () => ipcRenderer.invoke(IPC.CONTEXT_LIST_FACTS),
   editContextFact: (id: string, body: string) => ipcRenderer.invoke(IPC.CONTEXT_EDIT_FACT, { id, body }),
   dismissContextFact: (id: string) => ipcRenderer.invoke(IPC.CONTEXT_DISMISS_FACT, id),
+  restoreContextFact: (id: string) => ipcRenderer.invoke(IPC.CONTEXT_RESTORE_FACT, id),
+  addContextFact: (kind: string, body: string) => ipcRenderer.invoke(IPC.CONTEXT_ADD_FACT, { kind, body }),
   clearContextFacts: () => ipcRenderer.invoke(IPC.CONTEXT_CLEAR_FACTS),
   refreshContextStats: () => ipcRenderer.invoke(IPC.CONTEXT_REFRESH_STATS),
 

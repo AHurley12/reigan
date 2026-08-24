@@ -1,4 +1,4 @@
-import type { ContextFact } from '../../../shared/types'
+import type { ContextFact, ContextFactKind } from '../../../shared/types'
 
 declare global {
   interface Window {
@@ -17,6 +17,8 @@ declare global {
       listContextFacts: () => Promise<{ active: ContextFact[]; dismissed: ContextFact[] }>
       editContextFact: (id: string, body: string) => Promise<ContextFact | null>
       dismissContextFact: (id: string) => Promise<{ ok: boolean }>
+      restoreContextFact: (id: string) => Promise<ContextFact | null>
+      addContextFact: (kind: ContextFactKind, body: string) => Promise<ContextFact | null>
       clearContextFacts: () => Promise<{ ok: boolean }>
       refreshContextStats: () => Promise<unknown>
       getSystemInfo: () => Promise<any>

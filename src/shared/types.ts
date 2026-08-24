@@ -299,6 +299,8 @@ export const IPC = {
   CONTEXT_LIST_FACTS: 'context:list-facts',
   CONTEXT_EDIT_FACT: 'context:edit-fact',
   CONTEXT_DISMISS_FACT: 'context:dismiss-fact',
+  CONTEXT_RESTORE_FACT: 'context:restore-fact',
+  CONTEXT_ADD_FACT: 'context:add-fact',
   CONTEXT_CLEAR_FACTS: 'context:clear-facts',
   CONTEXT_REFRESH_STATS: 'context:refresh-stats',
   // Voice

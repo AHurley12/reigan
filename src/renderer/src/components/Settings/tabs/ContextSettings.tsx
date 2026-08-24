@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Brain, Check, RotateCcw, Trash2, X } from 'lucide-react'
+import { Brain, Check, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useSettingsStore } from '../../../stores/settingsStore'
 import { useToastStore } from '../../../stores/toastStore'
 import { SettingRow } from '../controls/SettingRow'
@@ -12,6 +12,17 @@ const GROUPS: Array<{ heading: string; kinds: ContextFactKind[] }> = [
   { heading: 'Patterns', kinds: ['tendency'] },
 ]
 
+// The kind only decides which heading a fact files under, but picking it is a
+// two-second choice that stops everything the user types landing in one bucket
+// — so it is a select rather than a hard-coded default.
+const KIND_OPTIONS: Array<{ kind: ContextFactKind; label: string }> = [
+  { kind: 'duty', label: 'Duty' },
+  { kind: 'role', label: 'Role' },
+  { kind: 'project', label: 'Project' },
+  { kind: 'goal', label: 'Goal' },
+  { kind: 'tendency', label: 'Pattern' },
+]
+
 export function ContextSettings() {
   const settings = useSettingsStore((s) => s.settings)
   const set = useSettingsStore((s) => s.set)
@@ -22,6 +33,8 @@ export function ContextSettings() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [newBody, setNewBody] = useState('')
+  const [newKind, setNewKind] = useState<ContextFactKind>('duty')
 
   const load = async () => {
     try {
@@ -34,7 +47,18 @@ export function ContextSettings() {
   }
 
   useEffect(() => {
-    void load()
+    void (async () => {
+      // Stats otherwise only recompute at launch, so a long-running app shows
+      // as-of-launch numbers here. Refreshing first also means the derived
+      // facts the refresh seeds or retracts are already settled by the time
+      // the list below is read.
+      try {
+        await window.reigan.refreshContextStats()
+      } catch {
+        // Best effort. Stale numbers are worth far less than a blank tab.
+      }
+      await load()
+    })()
   }, [])
 
   const startEdit = (fact: ContextFact) => {
@@ -70,10 +94,30 @@ export function ContextSettings() {
 
   const restore = async (fact: ContextFact) => {
     try {
-      await window.reigan.editContextFact(fact.id, fact.body)
+      // Reactivate, don't re-author. Routing this through editContextFact
+      // promoted the row to source 'user' at confidence 1, which for a
+      // stat-derived fact meant its numbers could never update again.
+      await window.reigan.restoreContextFact(fact.id)
       await load()
     } catch {
       push('Could not restore that fact', 'error')
+    }
+  }
+
+  const addFact = async () => {
+    const body = newBody.trim()
+    if (!body) return
+    try {
+      const created = await window.reigan.addContextFact(newKind, body)
+      if (created) {
+        setNewBody('')
+        await load()
+        push('Added — Shingan will treat this as ground truth', 'info')
+      } else {
+        push('Could not add that', 'error')
+      }
+    } catch {
+      push('Could not add that', 'error')
     }
   }
 
@@ -103,6 +147,48 @@ export function ContextSettings() {
           {settings.contextLearningPaused ? 'Paused' : 'Active'}
         </Button>
       </SettingRow>
+
+      <div className="space-y-2">
+        <h3 className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          Add what Shingan should know
+        </h3>
+        <div className="flex items-center gap-2">
+          <select
+            value={newKind}
+            onChange={(e) => setNewKind(e.target.value as ContextFactKind)}
+            aria-label="Kind of fact"
+            className="text-[12px] rounded-md px-2 py-1.5 bg-transparent focus:outline-none"
+            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+          >
+            {KIND_OPTIONS.map((o) => (
+              <option key={o.kind} value={o.kind} style={{ background: 'var(--bg-elevated)' }}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={newBody}
+            onChange={(e) => setNewBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addFact()
+            }}
+            placeholder="I work the evening shift at AWP."
+            aria-label="What Shingan should know"
+            className="flex-1 rounded-md px-2 py-1.5 bg-transparent text-sm outline-none"
+            style={{ border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+          />
+          <button
+            onClick={() => void addFact()}
+            disabled={!newBody.trim()}
+            title="Add"
+            aria-label="Add fact"
+            className="rounded-md p-1.5 disabled:opacity-40"
+            style={{ border: '1px solid var(--border)' }}
+          >
+            <Plus size={14} style={{ color: 'var(--text-secondary)' }} />
+          </button>
+        </div>
+      </div>
 
       {facts.length === 0 ? (
         <div className="flex items-center gap-2 rounded-lg px-3 py-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
@@ -198,7 +284,10 @@ export function ContextSettings() {
         </div>
       )}
 
-      {facts.length > 0 && (
+      {/* Also gated on the Removed list: with every fact dismissed there was
+          nothing active to show, the button vanished, and the only way to purge
+          what Shingan still held disappeared with it. */}
+      {(facts.length > 0 || dismissedFacts.length > 0) && (
         confirmClear ? (
           <div className="rounded-lg p-4 space-y-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)' }}>
             <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
