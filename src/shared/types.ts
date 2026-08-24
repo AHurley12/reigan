@@ -3,6 +3,27 @@ export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'er
 export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'performance' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
 export type PersonalityMode = 'standard' | 'unbridled';
+export type ContextFactKind = 'duty' | 'role' | 'project' | 'goal' | 'tendency';
+export type ContextFactSource = 'distilled' | 'stat' | 'user';
+export type ContextFactStatus = 'active' | 'dismissed' | 'superseded';
+
+export const CONTEXT_FACT_KINDS: readonly ContextFactKind[] = [
+  'role', 'duty', 'project', 'goal', 'tendency',
+] as const;
+
+export interface ContextFact {
+  id: string;
+  kind: ContextFactKind;
+  key: string;
+  body: string;
+  evidence: string | null;
+  confidence: number;
+  source: ContextFactSource;
+  status: ContextFactStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastSeenAt: number;
+}
 /**
  * How much motion the app is allowed. `system` follows the OS accessibility
  * preference; the other two are deliberate user overrides in *either*
