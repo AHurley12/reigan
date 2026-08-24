@@ -36,7 +36,23 @@ export function shouldDistill(conversationId: string, exchange: string): boolean
   return true
 }
 
-const PROMPT = `You maintain a factual profile of one person, used by their personal assistant.
+/**
+ * Builds the distillation prompt via template-literal interpolation rather
+ * than placeholder `.replace()`.
+ *
+ * `String.prototype.replace(searchString, replaceString)` scans the
+ * *replacement* string for `$$`, `$&`, `` $` `` and `$'` even when the
+ * pattern is a plain string — and `conversation` is raw user/assistant text
+ * from a finance-heavy app, where a literal `$&` in a message is not
+ * hypothetical. Chaining two `.replace()` calls also has an ordering hazard:
+ * a model-generated fact body that happens to contain the literal text
+ * `{conversation}` would consume the second placeholder, leaving the real
+ * conversation unsubstituted. Both corrupt the model's *input*, producing
+ * structurally-valid-but-false facts that pass parsing cleanly and get
+ * written. Template interpolation has neither hazard.
+ */
+function buildDistillPrompt(existing: string, conversation: string): string {
+  return `You maintain a factual profile of one person, used by their personal assistant.
 
 From the conversation below, extract only DURABLE facts about the person — their duties, roles, active projects, stated goals, and behavioural tendencies. A durable fact is still true next month.
 
@@ -51,10 +67,11 @@ Return ONLY a JSON array, no prose. Each element:
 Reuse an existing key verbatim when you are updating that same fact. Return [] if nothing durable appeared.
 
 EXISTING FACTS:
-{existing}
+${existing}
 
 CONVERSATION:
-{conversation}`
+${conversation}`
+}
 
 /**
  * Parses the model's reply, discarding anything malformed.
@@ -130,10 +147,7 @@ export async function runDistillation(
   const reply = await llm.invoke([
     {
       role: 'user',
-      content: PROMPT.replace('{existing}', existing || '(none yet)').replace(
-        '{conversation}',
-        conversation,
-      ),
+      content: buildDistillPrompt(existing || '(none yet)', conversation),
     },
   ])
 

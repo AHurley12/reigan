@@ -1,7 +1,43 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { parseDistillResponse, resetDistillCounters, shouldDistill } from './distill'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-beforeEach(() => resetDistillCounters())
+// maybeDistill's fire-and-forget path touches getDecodedSetting, the fact
+// store, the error log and the model client. All four are mocked so this
+// file continues to load with the same plain-static-import pattern used for
+// the pure functions below — no real database or Electron userData needed —
+// and so the assertions below can observe exactly what maybeDistill did
+// without a live network call.
+const mockGetDecodedSetting = vi.fn()
+vi.mock('../db/queries', () => ({
+  getDecodedSetting: (...args: unknown[]) => mockGetDecodedSetting(...args),
+}))
+
+const mockListFacts = vi.fn()
+const mockUpsertFact = vi.fn()
+vi.mock('./store', () => ({
+  listFacts: (...args: unknown[]) => mockListFacts(...args),
+  upsertFact: (...args: unknown[]) => mockUpsertFact(...args),
+}))
+
+const mockRecordAppError = vi.fn()
+vi.mock('../errors/errorLog', () => ({
+  recordAppError: (...args: unknown[]) => mockRecordAppError(...args),
+}))
+
+const mockInvoke = vi.fn()
+vi.mock('@langchain/anthropic', () => ({
+  ChatAnthropic: vi.fn().mockImplementation(() => ({ invoke: mockInvoke })),
+}))
+
+import { maybeDistill, parseDistillResponse, resetDistillCounters, shouldDistill } from './distill'
+
+beforeEach(() => {
+  resetDistillCounters()
+  mockGetDecodedSetting.mockReset()
+  mockListFacts.mockReset().mockReturnValue([])
+  mockUpsertFact.mockReset()
+  mockRecordAppError.mockReset()
+  mockInvoke.mockReset()
+})
 
 const LONG = 'x'.repeat(300)
 
@@ -90,5 +126,61 @@ describe('parseDistillResponse', () => {
   it('caps how many facts one pass may write', () => {
     const many = Array.from({ length: 50 }, (_, i) => ({ kind: 'goal', key: `k${i}`, body: `B${i}`, confidence: 0.5 }))
     expect(parseDistillResponse(JSON.stringify(many))).toHaveLength(12)
+  })
+})
+
+describe('maybeDistill', () => {
+  it('short-circuits before any work when contextLearningPaused is the string "true"', () => {
+    // Settings persist as JSON.stringify(value), so a paused boolean lands in
+    // SQLite as the literal string 'true' — this is the gate maybeDistill
+    // actually checks, so the test drives it the same way the real store would.
+    mockGetDecodedSetting.mockReturnValue('true')
+    for (let i = 0; i < 3; i++) shouldDistill('c-paused', LONG) // prime the counter to fire
+
+    maybeDistill('c-paused', LONG, [], 'sk-test')
+
+    // No construction of the model client, and no read of the fact store —
+    // proof runDistillation was never entered, not merely that it produced
+    // no output.
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(mockListFacts).not.toHaveBeenCalled()
+  })
+
+  it('short-circuits before any work when the API key is missing', () => {
+    mockGetDecodedSetting.mockReturnValue('false')
+    for (let i = 0; i < 3; i++) shouldDistill('c-nokey', LONG)
+
+    maybeDistill('c-nokey', LONG, [], '')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(mockListFacts).not.toHaveBeenCalled()
+  })
+
+  it('routes a rejected runDistillation to recordAppError with severity warning, without throwing', async () => {
+    mockGetDecodedSetting.mockReturnValue('false')
+    mockInvoke.mockRejectedValue(new Error('upstream exploded'))
+    for (let i = 0; i < 3; i++) shouldDistill('c-reject', LONG) // one more call inside maybeDistill fires it
+
+    expect(() =>
+      maybeDistill(
+        'c-reject',
+        LONG,
+        [{ role: 'user', content: LONG }],
+        'sk-test',
+      ),
+    ).not.toThrow()
+
+    // maybeDistill is fire-and-forget; give the rejected invoke() and its
+    // .catch() a turn of the microtask queue to run.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockRecordAppError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'llm',
+        operation: 'contextDistillation',
+        severity: 'warning',
+        context: expect.objectContaining({ conversationId: 'c-reject' }),
+      }),
+    )
   })
 })
