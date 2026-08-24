@@ -63,6 +63,8 @@ export interface AppSettings {
   pushToTalk: boolean;
   ttsStability: number;
   ttsSimilarity: number;
+  /** Playback loudness for Reigan's voice, 0-1. Applied as a GainNode. */
+  voiceVolume: number;
   googleClientId: string;
   googleClientSecret: string;
   showOrbColumn: boolean;

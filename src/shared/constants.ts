@@ -35,6 +35,7 @@ export const DEFAULT_SETTINGS = {
   pushToTalk: true,
   ttsStability: 0.7,
   ttsSimilarity: 0.75,
+  voiceVolume: 1,
   googleClientId: '',
   googleClientSecret: '',
   showOrbColumn: true,

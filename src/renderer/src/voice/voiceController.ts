@@ -13,6 +13,7 @@ let workletNode: AudioWorkletNode | null = null
 let muteNode: GainNode | null = null
 let playbackContext: AudioContext | null = null
 let playbackAnalyser: AnalyserNode | null = null
+let playbackGain: GainNode | null = null
 let levelRaf = 0
 let listenersInitialized = false
 let devicesValidated = false
@@ -140,6 +141,12 @@ async function ensurePlaybackContext(): Promise<AudioContext> {
     playbackAnalyser = playbackContext.createAnalyser()
     playbackAnalyser.fftSize = 512
     playbackAnalyser.connect(playbackContext.destination)
+
+    // Sources feed the gain, the gain feeds the analyser: the meter then
+    // reports what the user actually hears rather than the pre-fader signal.
+    playbackGain = playbackContext.createGain()
+    playbackGain.gain.value = useSettingsStore.getState().settings.voiceVolume
+    playbackGain.connect(playbackAnalyser)
   }
 
   const outputDeviceId = useSettingsStore.getState().settings.audioOutputDeviceId
@@ -153,6 +160,17 @@ async function ensurePlaybackContext(): Promise<AudioContext> {
     }
   }
   return playbackContext
+}
+
+/**
+ * Applies a volume change to audio that is already scheduled. Chunks are queued
+ * ahead of the playhead, so without this a drag mid-sentence would not be heard
+ * until the next reply. No-ops before the first playback builds the graph — the
+ * gain is read from settings when it is created.
+ */
+export function setPlaybackVolume(volume: number): void {
+  if (!playbackGain) return
+  playbackGain.gain.value = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1
 }
 
 // Electron's IPC delivers a main-process Buffer to the renderer as a Uint8Array,
@@ -235,7 +253,7 @@ async function playPcm16(chunk: Uint8Array): Promise<void> {
 
   const source = playbackContext.createBufferSource()
   source.buffer = audioBuffer
-  source.connect(playbackAnalyser ?? playbackContext.destination)
+  source.connect(playbackGain ?? playbackAnalyser ?? playbackContext.destination)
   source.onended = () => {
     activeSources = activeSources.filter((s) => s !== source)
   }

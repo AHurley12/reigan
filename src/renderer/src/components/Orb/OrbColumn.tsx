@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
+import { Volume2, VolumeX } from 'lucide-react'
 import { VoiceOrb } from './VoiceOrb'
 import { AvatarPanel } from './AvatarPanel'
 import { meterHeight } from './meterScale'
+import { Slider } from '../Settings/controls/Slider'
+import { setPlaybackVolume } from '../../voice/voiceController'
 import { useAppStore } from '../../stores/appStore'
 import { useVoiceStore } from '../../stores/voiceStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -71,7 +74,16 @@ export function OrbColumn() {
   const transcript = useVoiceStore((s) => s.transcript)
   const orbAudio = useVoiceStore((s) => s.orbAudio)
   const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
+  const voiceVolume = useSettingsStore((s) => s.settings.voiceVolume)
+  const setSetting = useSettingsStore((s) => s.set)
   const isActive = reiganState === 'listening' || reiganState === 'speaking'
+
+  // Two calls, because they answer different clocks: the setting is what the
+  // next reply starts at, the gain is what the sentence already playing does.
+  const handleVolumeChange = (v: number) => {
+    setSetting('voiceVolume', v)
+    setPlaybackVolume(v)
+  }
 
   return (
     /* pt-8, not pt-5: the viewfinder's brackets overhang its box by 10px, and
@@ -89,8 +101,28 @@ export function OrbColumn() {
         <VoiceOrb />
       </ViewfinderFrame>
 
-      {/* Avatar — sits below the orb, always visible alongside it. Clears the
-          viewfinder's bottom brackets, which overhang by 10px. */}
+      {/* Volume, directly under the orb rather than in Settings: it is the one
+          voice control reached mid-sentence, and the orb is where the eye
+          already is. Distinct from the level meter at the foot of the column —
+          that reports how loud Reigan *is*, this sets how loud Reigan should be.
+          mt-5 clears the viewfinder's bottom brackets, which overhang by 10px. */}
+      <div className="mt-5 w-full flex items-center justify-center gap-2">
+        {voiceVolume === 0 ? (
+          <VolumeX size={14} style={{ color: 'var(--text-muted)' }} aria-hidden />
+        ) : (
+          <Volume2 size={14} style={{ color: 'var(--text-muted)' }} aria-hidden />
+        )}
+        <Slider
+          min={0}
+          max={1}
+          step={0.05}
+          value={voiceVolume}
+          onChange={handleVolumeChange}
+          formatLabel={(v) => `${Math.round(v * 100)}%`}
+        />
+      </div>
+
+      {/* Avatar — sits below the orb, always visible alongside it. */}
       <div className="mt-5 w-full">
         <AvatarPanel />
       </div>
