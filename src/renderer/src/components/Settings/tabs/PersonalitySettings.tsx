@@ -65,7 +65,7 @@ export function PersonalitySettings() {
         <SettingRow
           label="AI Personality"
           labelJa="性格モード"
-          description="Standard keeps Shingan composed and professional. Unbridled allows profanity, roasting, and dark humor — accuracy stays the same either way."
+          description="Standard keeps Shingan composed and professional. Unbridled is blunt, profane, and commanding — it teases, gives orders, and steers you toward what you're avoiding. Accuracy is identical either way."
           last
         >
           <ModeSwitch value={settings.personalityMode} onSelect={handleSelect} />
@@ -87,7 +87,7 @@ export function PersonalitySettings() {
       {pendingConfirm && (
         <div className="rounded-lg p-4 space-y-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)' }}>
           <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            Unbridled Mode enables profanity, roasting, and adult humor in AI responses. Shingan stays just as accurate and helpful — just with zero filter. You can switch back anytime.
+            Unbridled Mode enables profanity, roasting, adult humor, and a commanding tone that pushes you toward work you're dodging. Shingan stays just as accurate and helpful — just with zero filter. You can switch back anytime.
           </p>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setPendingConfirm(false)}>Cancel</Button>
