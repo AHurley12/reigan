@@ -123,12 +123,53 @@ describe('refreshStats', () => {
     const fact = store.listFacts().find((f) => f.key === 'overdue-backlog')
     expect(fact).toBeDefined()
     expect(fact!.source).toBe('stat')
-    expect(fact!.body).toContain('6')
+  })
+
+  it('states the pattern without restating the numbers', () => {
+    // digest.ts already renders the live tasks.overdue stat as its own line.
+    // A fact carrying the same count said it twice when the two agreed and
+    // asserted two different counts when they drifted apart.
+    for (let i = 0; i < 6; i++) addTask({ id: `t${i}`, due: NOW - (i + 1) * DAY })
+    refreshStats(NOW)
+
+    const fact = store.listFacts().find((f) => f.key === 'overdue-backlog')!
+    expect(fact.body).not.toMatch(/\d/)
   })
 
   it('does not seed the fact below the threshold', () => {
     addTask({ id: 't0', due: NOW - DAY })
     refreshStats(NOW)
+    expect(store.listFacts().find((f) => f.key === 'overdue-backlog')).toBeUndefined()
+  })
+
+  it('retracts the seeded fact once the backlog is cleared', () => {
+    // The fact was only rewritten while the threshold was tripped, so clearing
+    // the backlog left it standing at confidence 0.9 for the whole 90-day decay
+    // window — the assistant asserting something the same digest disproved.
+    for (let i = 0; i < 6; i++) addTask({ id: `t${i}`, due: NOW - (i + 1) * DAY })
+    refreshStats(NOW)
+    expect(store.listFacts().find((f) => f.key === 'overdue-backlog')).toBeDefined()
+
+    getDatabase().exec("UPDATE tasks SET status = 'done', completed_at = " + NOW)
+    refreshStats(NOW)
+
+    expect(store.listFacts().find((f) => f.key === 'overdue-backlog')).toBeUndefined()
+    expect(store.getFactByKey('tendency', 'overdue-backlog')).toBeNull()
+  })
+
+  it('does not resurrect a seeded fact the user dismissed', () => {
+    // Retraction deletes, so a dismissed row must be left alone: deleting it
+    // would let the next threshold trip re-insert it as active.
+    for (let i = 0; i < 6; i++) addTask({ id: `t${i}`, due: NOW - (i + 1) * DAY })
+    refreshStats(NOW)
+    store.dismissFact(store.getFactByKey('tendency', 'overdue-backlog')!.id, NOW)
+
+    getDatabase().exec("UPDATE tasks SET status = 'done', completed_at = " + NOW)
+    refreshStats(NOW)
+    getDatabase().exec("UPDATE tasks SET status = 'backlog', completed_at = NULL")
+    refreshStats(NOW)
+
+    expect(store.getFactByKey('tendency', 'overdue-backlog')!.status).toBe('dismissed')
     expect(store.listFacts().find((f) => f.key === 'overdue-backlog')).toBeUndefined()
   })
 })

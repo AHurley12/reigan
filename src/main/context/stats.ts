@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { getDatabase } from '../db/database'
-import { decayFacts, setStat, upsertFact } from './store'
+import { decayFacts, deleteFact, getFactByKey, setStat, upsertFact } from './store'
 
 const DAY_MS = 86_400_000
 const WINDOW_DAYS = 30
@@ -107,21 +107,50 @@ export function refreshStats(now = Date.now()): ContextStats {
   setStat('jobs.reliability', stats.jobsReliability, now)
   setStat('projects.cold', stats.coldProjects, now)
 
+  seedOverdueFact(stats, now)
+  decayFacts(now)
+  return stats
+}
+
+/**
+ * Keeps the "lets work go overdue" tendency in step with the actual backlog.
+ *
+ * The body carries no numbers. `digest.ts` already renders the live
+ * `tasks.overdue` stat as its own line, so a fact that restated the count said
+ * the same thing twice when the two agreed and asserted two different counts
+ * when they drifted. The stat line is the single source for current numbers;
+ * this fact exists only to name the pattern behind them.
+ *
+ * Below the threshold the fact is retracted rather than left standing, because
+ * a fact is only rewritten while the threshold is tripped — clearing the
+ * backlog used to leave "Has 9 overdue tasks" active at confidence 0.9 for the
+ * full 90-day decay window, with the assistant asserting something the same
+ * digest disproved two lines further down.
+ *
+ * Retraction deletes rather than dismisses, but only a row the stats layer
+ * still owns. A row the user dismissed stays dismissed (deleting it would let
+ * the next threshold trip resurrect something they rejected) and a row they
+ * edited is theirs now.
+ */
+function seedOverdueFact(stats: ContextStats, now: number): void {
   if (stats.tasksOverdue.count > OVERDUE_FACT_THRESHOLD) {
     upsertFact(
       {
         kind: 'tendency',
         key: 'overdue-backlog',
-        body: `Has ${stats.tasksOverdue.count} overdue tasks; the oldest is ${stats.tasksOverdue.oldestDays} days past due.`,
+        body: 'Lets tasks run past their due dates instead of closing or rescheduling them.',
         source: 'stat',
         evidence: 'tasks table',
       },
       now,
     )
+    return
   }
 
-  decayFacts(now)
-  return stats
+  const existing = getFactByKey('tendency', 'overdue-backlog')
+  if (existing && existing.source === 'stat' && existing.status === 'active') {
+    deleteFact(existing.id)
+  }
 }
 
 /** SQLite has no median. Averages are unusable here — see the latency test. */

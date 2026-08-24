@@ -68,12 +68,76 @@ describe('upsertFact', () => {
     expect(corrected!.confidence).toBe(1)
   })
 
-  it('reactivates a dismissed fact when the same source observes it again', () => {
+  it('leaves a dismissed fact dismissed when a producer observes it again', () => {
+    // Deleting a fact has to stick. Both producers re-observe constantly — the
+    // distiller re-derives the same slug from the same conversation, a stats
+    // run re-seeds the same threshold fact every launch — so reactivating here
+    // made deletion nothing more than suppression that expired in a few turns.
     const f = store.upsertFact({ kind: 'goal', key: 'sie-exam', body: 'Wants to pass the SIE', source: 'distilled' }, 1_000)!
     store.dismissFact(f.id, 1_500)
-    const revived = store.upsertFact({ kind: 'goal', key: 'sie-exam', body: 'Still on the SIE', source: 'distilled' }, 2_000)
+    const rewritten = store.upsertFact({ kind: 'goal', key: 'sie-exam', body: 'Still on the SIE', source: 'distilled' }, 2_000)
+
+    expect(rewritten!.status).toBe('dismissed')
+    expect(store.listFacts()).toHaveLength(0)
+
+    // The row still tracks reality, so it stays current and decay keeps
+    // seeing an honest last-seen time.
+    expect(rewritten!.body).toBe('Still on the SIE')
+    expect(rewritten!.lastSeenAt).toBe(2_000)
+  })
+
+  it('keeps a dismissed stat fact dismissed across a later stats run', () => {
+    const f = store.upsertFact({ kind: 'tendency', key: 'overdue-backlog', body: 'Lets tasks run late', source: 'stat' }, 1_000)!
+    store.dismissFact(f.id, 1_500)
+
+    store.upsertFact({ kind: 'tendency', key: 'overdue-backlog', body: 'Lets tasks run late', source: 'stat' }, 2_000)
+
+    expect(store.listFacts()).toHaveLength(0)
+  })
+
+  it('reactivates a dismissed fact for a user write', () => {
+    // The user asserting the fact is not a producer re-observing it — and this
+    // is the path Restore in Settings depends on.
+    const f = store.upsertFact({ kind: 'goal', key: 'sie-exam', body: 'Wants to pass the SIE', source: 'distilled' }, 1_000)!
+    store.dismissFact(f.id, 1_500)
+    const revived = store.upsertFact({ kind: 'goal', key: 'sie-exam', body: 'Sitting the SIE in November', source: 'user' }, 2_000)
 
     expect(revived!.status).toBe('active')
+    expect(revived!.source).toBe('user')
+  })
+})
+
+describe('reactivateFact', () => {
+  it('restores a dismissed fact without promoting it to user-authored', () => {
+    // Restore used to route through editFactBody, which set source 'user' and
+    // confidence 1 — permanently outranking the stats run that wrote the row,
+    // so its numbers could never update again.
+    const f = store.upsertFact({ kind: 'tendency', key: 'overdue-backlog', body: 'Lets tasks run late', source: 'stat' }, 1_000)!
+    store.dismissFact(f.id, 1_500)
+
+    const restored = store.reactivateFact(f.id, 2_000)!
+
+    expect(restored.status).toBe('active')
+    expect(restored.source).toBe('stat')
+    expect(restored.confidence).toBe(0.9)
+    expect(restored.body).toBe('Lets tasks run late')
+  })
+})
+
+describe('slugifyKey', () => {
+  it('is stable for the same text, so re-adding updates instead of duplicating', () => {
+    expect(store.slugifyKey('I work the AWP evening shift.')).toBe(store.slugifyKey('I work the AWP evening shift.'))
+    expect(store.slugifyKey('I work the AWP evening shift.')).toBe('i-work-the-awp-evening-shift')
+  })
+
+  it('never yields an empty key', () => {
+    expect(store.slugifyKey('!!!')).toBe('note')
+  })
+
+  it('truncates without leaving a trailing separator', () => {
+    const key = store.slugifyKey('a'.repeat(60) + ' tail')
+    expect(key.length).toBeLessThanOrEqual(48)
+    expect(key.endsWith('-')).toBe(false)
   })
 })
 
@@ -128,6 +192,29 @@ describe('decayFacts', () => {
     expect(store.decayFacts(1_000 + 10 * DAY)).toBe(0)
   })
 
+  it('applies once per stale period however often it runs', () => {
+    // refreshStats runs on every app launch and decayFacts never recorded that
+    // it had fired, so the multiplier reapplied every boot: 0.8 -> 0.56 -> 0.39
+    // -> 0.27, dropping under the 0.35 render threshold inside an afternoon
+    // rather than over the nine months the 90-day rule describes.
+    store.upsertFact({ kind: 'goal', key: 'stale', body: 'Old', source: 'distilled', confidence: 0.8 }, 1_000)
+    const now = 1_000 + 91 * DAY
+
+    expect(store.decayFacts(now)).toBe(1)
+    expect(store.decayFacts(now)).toBe(0)
+    expect(store.decayFacts(now)).toBe(0)
+
+    expect(store.listFacts()[0].confidence).toBeCloseTo(0.56)
+  })
+
+  it('decays again only after another full stale period', () => {
+    store.upsertFact({ kind: 'goal', key: 'stale', body: 'Old', source: 'distilled', confidence: 0.8 }, 1_000)
+    store.decayFacts(1_000 + 91 * DAY)
+    store.decayFacts(1_000 + 181 * DAY)
+
+    expect(store.listFacts()[0].confidence).toBeCloseTo(0.392)
+  })
+
   it('never decays user-authored facts', () => {
     // The user typed it. Time passing is not evidence against it.
     store.upsertFact({ kind: 'duty', key: 'job', body: 'Works evenings', source: 'user' }, 1_000)
@@ -159,5 +246,20 @@ describe('clearAllFacts', () => {
     store.upsertFact({ kind: 'duty', key: 'b', body: 'B', source: 'distilled' }, 1_000)
     store.clearAllFacts()
     expect(store.listFacts({ status: 'active' })).toHaveLength(0)
+  })
+
+  it('removes dismissed facts and the derived stats too', () => {
+    // The digest renders from both tables, so clearing only context_facts left
+    // the assistant still opening with "### Current numbers" — while the
+    // confirmation the user agreed to said it starts over from nothing.
+    const f = store.upsertFact({ kind: 'goal', key: 'a', body: 'A', source: 'distilled' }, 1_000)!
+    store.dismissFact(f.id, 1_000)
+    store.setStat('tasks.overdue', { count: 9, oldestDays: 40 }, 1_000)
+
+    store.clearAllFacts()
+
+    expect(store.listFacts({ status: 'active' })).toHaveLength(0)
+    expect(store.listFacts({ status: 'dismissed' })).toHaveLength(0)
+    expect(store.getStat('tasks.overdue')).toBeNull()
   })
 })
