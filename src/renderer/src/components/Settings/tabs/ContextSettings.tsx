@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Brain, Check, Trash2, X } from 'lucide-react'
+import { Brain, Check, RotateCcw, Trash2, X } from 'lucide-react'
 import { useSettingsStore } from '../../../stores/settingsStore'
 import { useToastStore } from '../../../stores/toastStore'
 import { SettingRow } from '../controls/SettingRow'
@@ -18,13 +18,19 @@ export function ContextSettings() {
   const push = useToastStore((s) => s.push)
 
   const [facts, setFacts] = useState<ContextFact[]>([])
+  const [dismissedFacts, setDismissedFacts] = useState<ContextFact[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
 
   const load = async () => {
-    const result = await window.reigan.listContextFacts()
-    setFacts(result.active)
+    try {
+      const result = await window.reigan.listContextFacts()
+      setFacts(result.active)
+      setDismissedFacts(result.dismissed)
+    } catch {
+      push('Could not load what Shingan has learned', 'error')
+    }
   }
 
   useEffect(() => {
@@ -38,22 +44,48 @@ export function ContextSettings() {
 
   const saveEdit = async (id: string) => {
     if (!draft.trim()) return
-    await window.reigan.editContextFact(id, draft.trim())
-    setEditingId(null)
-    await load()
-    push('Correction saved — Shingan will treat this as ground truth', 'info')
+    try {
+      const updated = await window.reigan.editContextFact(id, draft.trim())
+      setEditingId(null)
+      await load()
+      if (updated) {
+        push('Correction saved — Shingan will treat this as ground truth', 'info')
+      } else {
+        push('That fact no longer exists — nothing was saved', 'error')
+      }
+    } catch {
+      setEditingId(null)
+      push('Could not save that correction', 'error')
+    }
   }
 
   const dismiss = async (id: string) => {
-    await window.reigan.dismissContextFact(id)
-    await load()
+    try {
+      await window.reigan.dismissContextFact(id)
+      await load()
+    } catch {
+      push('Could not remove that fact', 'error')
+    }
+  }
+
+  const restore = async (fact: ContextFact) => {
+    try {
+      await window.reigan.editContextFact(fact.id, fact.body)
+      await load()
+    } catch {
+      push('Could not restore that fact', 'error')
+    }
   }
 
   const clearAll = async () => {
-    await window.reigan.clearContextFacts()
-    setConfirmClear(false)
-    await load()
-    push('Cleared everything Shingan had learned', 'info')
+    try {
+      await window.reigan.clearContextFacts()
+      setConfirmClear(false)
+      await load()
+      push('Cleared everything Shingan had learned', 'info')
+    } catch {
+      push('Could not clear what Shingan has learned', 'error')
+    }
   }
 
   return (
@@ -109,10 +141,10 @@ export function ContextSettings() {
                         className="flex-1 bg-transparent text-sm outline-none"
                         style={{ color: 'var(--text-primary)' }}
                       />
-                      <button onClick={() => void saveEdit(fact.id)} title="Save">
+                      <button onClick={() => void saveEdit(fact.id)} title="Save" aria-label="Save correction">
                         <Check size={14} style={{ color: 'var(--reigan-primary)' }} />
                       </button>
-                      <button onClick={() => setEditingId(null)} title="Cancel">
+                      <button onClick={() => setEditingId(null)} title="Cancel" aria-label="Cancel edit">
                         <X size={14} style={{ color: 'var(--text-muted)' }} />
                       </button>
                     </>
@@ -131,7 +163,7 @@ export function ContextSettings() {
                           yours
                         </span>
                       )}
-                      <button onClick={() => void dismiss(fact.id)} title="Remove">
+                      <button onClick={() => void dismiss(fact.id)} title="Remove" aria-label="Remove fact">
                         <Trash2 size={13} style={{ color: 'var(--text-muted)' }} />
                       </button>
                     </>
@@ -141,6 +173,29 @@ export function ContextSettings() {
             </div>
           )
         })
+      )}
+
+      {dismissedFacts.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+            Removed
+          </h3>
+
+          {dismissedFacts.map((fact) => (
+            <div
+              key={fact.id}
+              className="rounded-lg px-3 py-2 flex items-start gap-2"
+              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', opacity: 0.7 }}
+            >
+              <span className="flex-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                {fact.body}
+              </span>
+              <button onClick={() => void restore(fact)} title="Restore" aria-label="Restore fact">
+                <RotateCcw size={13} style={{ color: 'var(--text-muted)' }} />
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {facts.length > 0 && (
