@@ -715,7 +715,7 @@ function clamp(n: number): number {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/main/context/store.test.ts`
-Expected: PASS (16 tests)
+Expected: PASS (17 tests)
 
 - [ ] **Step 5: Commit**
 
