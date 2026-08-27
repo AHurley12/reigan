@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { InscribeText } from './InscribeText'
 import { MarkdownBody } from './MarkdownBody'
+import { splitStreamedMarkdown } from './markdownSplit'
 
 interface Props {
   content: string
@@ -8,6 +9,13 @@ interface Props {
 }
 
 export function StreamingText({ content, isStreaming }: Props) {
+  // Recomputed per token, which is a linear scan of a reply — cheap next to the
+  // markdown re-render it feeds, and memoising it would need the same scan to
+  // decide whether the memo is stale.
+  const { settled, tail } = isStreaming
+    ? splitStreamedMarkdown(content)
+    : { settled: '', tail: '' }
+
   // Keep the cursor mounted briefly after streaming ends so it can fade out
   // instead of vanishing the instant the final token arrives.
   const [showCursor, setShowCursor] = useState(!!isStreaming)
@@ -37,12 +45,21 @@ export function StreamingText({ content, isStreaming }: Props) {
       [&_h2]:font-display [&_h2]:text-txt-primary
       [&_h3]:font-display [&_h3]:text-txt-primary
     ">
-      {/* While streaming, characters are inscribed in as they arrive; once the
-          response settles it re-renders as full markdown. */}
+      {/* Progressive, rather than plain text that snaps to markdown at the end.
+          Blocks that are finished render as markdown immediately; only the
+          fragment still being written keeps the inscribe effect, so the live
+          edge still reads as Reigan writing while everything behind it is
+          already formatted. splitStreamedMarkdown guarantees settled + tail is
+          exactly the content, so nothing is dropped or shown twice. */}
       {isStreaming ? (
-        <p className="inscribe-body" style={{ color: 'var(--text-secondary)' }}>
-          <InscribeText text={content} />
-        </p>
+        <>
+          {settled && <MarkdownBody>{settled}</MarkdownBody>}
+          {tail && (
+            <p className="inscribe-body" style={{ color: 'var(--text-secondary)' }}>
+              <InscribeText text={tail} />
+            </p>
+          )}
+        </>
       ) : (
         <MarkdownBody>{content}</MarkdownBody>
       )}
