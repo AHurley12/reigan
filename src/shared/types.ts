@@ -127,6 +127,12 @@ export interface AppSettings {
   avatarCustomModelLabel: string;
   voiceOrbStyle: string;
   theme: string;
+  /** Anthropic model id. See shared/models.ts for the catalogue. */
+  model: string;
+  thinkingEnabled: boolean;
+  thinkingBudget: number;
+  /** null means "send the default sampling parameters" — not the same as 0. */
+  temperature: number | null;
 }
 
 // ── Voice ──

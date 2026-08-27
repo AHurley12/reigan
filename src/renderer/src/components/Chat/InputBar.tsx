@@ -1,11 +1,12 @@
 import React, { useRef, useState, KeyboardEvent } from 'react'
-import { Send, Mic, Square, Flame, CircleStop, Paperclip, FileText, Image as ImageIcon, X } from 'lucide-react'
+import { Send, Mic, Square, Flame, CircleStop, Paperclip, FileText, Image as ImageIcon, X, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVoiceControls } from '../../hooks/useVoice'
 import { useAttachments, type PendingAttachment } from './useAttachments'
 import { ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES } from '../../../../shared/attachmentPolicy'
+import { resolveModel } from '../../../../shared/models'
 
 /** Mirrors the policy, so the picker cannot offer what the policy would refuse. */
 const ACCEPT = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES].join(',')
@@ -21,6 +22,8 @@ export function InputBar({ onSend, inputRef }: Props) {
   const ref = inputRef ?? internalRef
   const { attachments, add, remove, clear } = useAttachments()
   const [dragging, setDragging] = useState(false)
+  const activeModel = resolveModel(useSettingsStore((s) => s.settings.model))
+  const thinkingOn = useSettingsStore((s) => s.settings.thinkingEnabled) && activeModel.supportsThinking
   const { reiganState, setSettingsOpen } = useAppStore()
   const isUnbridled = useSettingsStore((s) => s.settings.personalityMode === 'unbridled')
   const { isActive: isVoiceActive, startVoice, stopVoice, skipVoiceResponse } = useVoiceControls()
@@ -168,6 +171,18 @@ export function InputBar({ onSend, inputRef }: Props) {
           </div>
         </div>
       )}
+
+      {/* Which model is about to answer. A setting that changes what you get
+          back should not be two panels away with nothing on screen saying so. */}
+      <button
+        onClick={() => setSettingsOpen(true)}
+        className="h-9 px-2 rounded-md flex items-center gap-1 text-[11px] shrink-0 transition-colors"
+        style={{ color: 'var(--text-muted)' }}
+        aria-label={`Model: ${activeModel.label}. Open Settings to change it.`}
+      >
+        {activeModel.label}
+        {thinkingOn && <Sparkles size={10} aria-hidden="true" />}
+      </button>
 
       {/* Attach */}
       <div className="relative group">

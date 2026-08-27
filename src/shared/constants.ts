@@ -1,4 +1,5 @@
 import type { TaskStatus, ReiganState, FileTypeCategoryId } from './types';
+import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET } from './models';
 
 export const APP_NAME = 'Shingan';
 export const APP_NAME_JP = '心眼';
@@ -48,6 +49,13 @@ export const DEFAULT_SETTINGS = {
   avatarCustomModelLabel: '',
   voiceOrbStyle: 'nebula',
   theme: 'shingan',
+  model: DEFAULT_MODEL_ID,
+  thinkingEnabled: false,
+  thinkingBudget: DEFAULT_THINKING_BUDGET,
+  // null, not a number: "leave sampling alone" is a distinct state from any
+  // temperature the user could pick, and it is the one that reproduces the
+  // request the app sent before the picker existed. See resolveSampling.
+  temperature: null as number | null,
 };
 
 /**

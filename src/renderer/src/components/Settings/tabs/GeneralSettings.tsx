@@ -4,6 +4,14 @@ import { SettingRow } from '../controls/SettingRow'
 import { Toggle } from '../controls/Toggle'
 import { Select } from '../controls/Select'
 import { ApiKeyField } from '../controls/ApiKeyField'
+import { Slider } from '../controls/Slider'
+import {
+  MAX_TEMPERATURE,
+  MIN_TEMPERATURE,
+  MIN_THINKING_BUDGET,
+  MODELS,
+  resolveModel,
+} from '../../../../../shared/models'
 import type { MotionPreference } from '../../../../../shared/types'
 
 const SHORTCUTS = [
@@ -19,6 +27,7 @@ export function GeneralSettings() {
   const settings = useSettingsStore((s) => s.settings)
   const set = useSettingsStore((s) => s.set)
   const systemReduces = useSystemPrefersReducedMotion()
+  const activeModel = resolveModel(settings.model)
 
   const MOTION_OPTIONS = [
     {
@@ -40,6 +49,91 @@ export function GeneralSettings() {
         <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Anthropic API Key</p>
         <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Required to activate Shingan. Stored locally.</p>
         <ApiKeyField settingKey="anthropicApiKey" placeholder="sk-ant-..." />
+      </div>
+
+      <div>
+        <SettingRow
+          label="Model"
+          labelJa="モデル"
+          description={activeModel.hint}
+        >
+          <Select
+            value={settings.model}
+            options={MODELS.map((m) => ({ value: m.id, label: m.label }))}
+            onChange={(v) => set('model', v)}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="Extended thinking"
+          labelJa="熟考"
+          description={
+            activeModel.supportsThinking
+              ? 'Lets the model reason at length before answering. Slower, and the thinking tokens are billed.'
+              : `${activeModel.label} does not support extended thinking.`
+          }
+        >
+          <Toggle
+            checked={activeModel.supportsThinking && settings.thinkingEnabled}
+            onChange={(v) => set('thinkingEnabled', v)}
+            disabled={!activeModel.supportsThinking}
+          />
+        </SettingRow>
+
+        {activeModel.supportsThinking && settings.thinkingEnabled && (
+          <SettingRow
+            label="Thinking budget"
+            labelJa="思考予算"
+            description="How many tokens the model may spend thinking before it answers."
+          >
+            <Slider
+              min={MIN_THINKING_BUDGET}
+              max={32_000}
+              step={1024}
+              value={settings.thinkingBudget}
+              onChange={(v) => set('thinkingBudget', v)}
+              formatLabel={(v) => `${v.toLocaleString()}`}
+            />
+          </SettingRow>
+        )}
+
+        <SettingRow
+          label="Temperature"
+          labelJa="温度"
+          description={
+            settings.thinkingEnabled && activeModel.supportsThinking
+              ? 'Fixed while extended thinking is on — the API requires the default.'
+              : 'Lower is more focused, higher more varied. Default leaves it to the model.'
+          }
+          last
+        >
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => set('temperature', settings.temperature === null ? 1 : null)}
+              className="px-2 py-1 rounded-sm text-[11px] transition-colors shrink-0"
+              style={{
+                border: '1px solid var(--border)',
+                color: settings.temperature === null ? 'var(--text-primary)' : 'var(--text-muted)',
+                background:
+                  settings.temperature === null
+                    ? 'color-mix(in srgb, var(--accent-primary) 14%, transparent)'
+                    : 'transparent',
+              }}
+            >
+              Default
+            </button>
+            {settings.temperature !== null && (
+              <Slider
+                min={MIN_TEMPERATURE}
+                max={MAX_TEMPERATURE}
+                step={0.05}
+                value={settings.temperature}
+                onChange={(v) => set('temperature', v)}
+                formatLabel={(v) => v.toFixed(2)}
+              />
+            )}
+          </div>
+        </SettingRow>
       </div>
 
       <div>

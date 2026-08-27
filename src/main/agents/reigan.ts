@@ -14,6 +14,7 @@ import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
 import { classify } from '../../shared/attachmentPolicy'
+import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET, resolveModel, resolveSampling } from '../../shared/models'
 import type { ChatAttachmentInput, ChatStreamEvent, PersonalityMode } from '../../shared/types'
 
 /**
@@ -53,8 +54,54 @@ function buildTurnMessage(text: string, attachments: ChatAttachmentInput[]): Hum
   return new HumanMessage({ content: blocks as never })
 }
 
+interface AgentConfig {
+  mode: PersonalityMode
+  model: string
+  thinkingEnabled: boolean
+  thinkingBudget: number
+  temperature: number | null
+}
+
 let executor: AgentExecutor | null = null
-let executorMode: PersonalityMode | null = null
+/**
+ * The whole config, serialised. This used to be the personality mode alone, so
+ * changing the model, the thinking budget or the temperature left the previous
+ * executor — and therefore the previous model — in place until a restart.
+ */
+let executorKey: string | null = null
+
+/**
+ * Settings arrive JSON-encoded from the renderer (settingsStore stringifies
+ * every value), so a number is the text "4096" and an absent temperature is the
+ * text "null". Number() would turn that last one into NaN.
+ */
+function readJsonSetting<T>(key: string, fallback: T): T {
+  const raw = getDecodedSetting(key)
+  if (raw === null || raw === '') return fallback
+  try {
+    const parsed = JSON.parse(raw)
+    return (parsed as T) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function getAgentConfig(): AgentConfig {
+  const temperatureRaw = getDecodedSetting('temperature')
+  let temperature: number | null = null
+  if (temperatureRaw !== null && temperatureRaw !== '' && temperatureRaw !== 'null') {
+    const parsed = Number(temperatureRaw)
+    if (Number.isFinite(parsed)) temperature = parsed
+  }
+
+  return {
+    mode: getPersonalityMode(),
+    model: readJsonSetting('model', DEFAULT_MODEL_ID),
+    thinkingEnabled: readJsonSetting('thinkingEnabled', false),
+    thinkingBudget: readJsonSetting('thinkingBudget', DEFAULT_THINKING_BUDGET),
+    temperature,
+  }
+}
 
 function getApiKey(): string {
   return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
@@ -89,22 +136,28 @@ function getTools(): DynamicStructuredTool[] {
   return tools
 }
 
-function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
+function buildExecutor(apiKey: string, config: AgentConfig): AgentExecutor {
+  const model = resolveModel(config.model)
+  // The three rules that keep the request valid — temperature and top_p never
+  // both set, the allowlist workaround for the default path, and thinking
+  // fixing sampling — live in resolveSampling, which is tested. See
+  // shared/models.ts.
+  const sampling = resolveSampling({
+    temperature: config.temperature,
+    thinkingEnabled: config.thinkingEnabled,
+    thinkingBudget: config.thinkingBudget,
+    modelSupportsThinking: model.supportsThinking,
+  })
+
   const llm = new ChatAnthropic({
     apiKey,
-    model: 'claude-sonnet-4-6',
+    model: model.id,
     streaming: true,
-    // claude-sonnet-4-6 isn't in @langchain/anthropic's model allowlist, so its
-    // temperature/topP defaults (1 and -1) are sent unconditionally, which the API
-    // rejects (top_p=-1 invalid, and temperature+top_p can't both be set). Explicit
-    // temperature: null clears it (JSON.stringify drops undefined), leaving topP as
-    // the only sampling param.
-    temperature: null,
-    topP: 1,
+    ...sampling,
   })
 
   const tools = getTools()
-  const systemPrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+  const systemPrompt = config.mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
 
   // `input` is a MessagesPlaceholder rather than the ['human', '{input}'] string
   // template it used to be. A string template runs its value through f-string
@@ -146,10 +199,11 @@ export async function* streamResponse(
     return
   }
 
-  const mode = getPersonalityMode()
-  if (!executor || executorMode !== mode) {
-    executor = buildExecutor(apiKey, mode)
-    executorMode = mode
+  const config = getAgentConfig()
+  const key = JSON.stringify(config)
+  if (!executor || executorKey !== key) {
+    executor = buildExecutor(apiKey, config)
+    executorKey = key
   }
 
   const chatHistory = history.flatMap(m =>
@@ -195,5 +249,5 @@ export async function* streamResponse(
 
 export function resetExecutor(): void {
   executor = null
-  executorMode = null
+  executorKey = null
 }
