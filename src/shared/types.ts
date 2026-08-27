@@ -28,6 +28,8 @@ export interface ChatMessage {
   error?: string;
   /** Files sent with this turn. Metadata only — the bytes stay on disk. */
   attachments?: ChatAttachmentMeta[];
+  /** Measured, never estimated. Absent when the API reported nothing. */
+  usage?: TurnUsage;
 }
 
 /** An attachment on its way to the model, before it has been stored. */
@@ -59,8 +61,21 @@ export type ChatDoneReason = 'complete' | 'aborted' | 'error';
  * channel later without re-plumbing preload and the renderer each time. New
  * kinds are additive; a renderer that does not know a kind ignores it.
  */
+/**
+ * Measured token usage for one turn, summed across every model call the agent
+ * made — a turn can run several, since the tool loop calls the model again
+ * after each result.
+ */
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Which model produced it, so a switch mid-conversation stays legible. */
+  model: string;
+}
+
 export type ChatStreamEvent =
   | { kind: 'token'; text: string }
+  | { kind: 'usage'; usage: TurnUsage }
   | { kind: 'done'; reason: ChatDoneReason; message?: string };
 
 export interface ChatStreamFrame {

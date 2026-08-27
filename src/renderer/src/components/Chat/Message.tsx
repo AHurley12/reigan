@@ -3,6 +3,7 @@ import { FileText, Image as ImageIcon, RotateCcw } from 'lucide-react'
 import { StreamingText } from './StreamingText'
 import { MessageActions } from './MessageActions'
 import { MessageError } from './MessageError'
+import { formatTokens } from './contextUsage'
 import { useChatStore } from '../../stores/chatStore'
 import type { ChatMessage } from '../../../../shared/types'
 
@@ -93,6 +94,15 @@ export function Message({ message }: Props) {
         <span className="font-mono text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {formatTime(message.timestamp)}
         </span>
+        {message.usage && (
+          <span
+            className="font-mono text-[10px]"
+            style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+            title={`${message.usage.inputTokens.toLocaleString()} in / ${message.usage.outputTokens.toLocaleString()} out · ${message.usage.model}`}
+          >
+            {formatTokens(message.usage.inputTokens)}↑ {formatTokens(message.usage.outputTokens)}↓
+          </span>
+        )}
         {message.stoppedByUser && (
           // Labelled, not just tinted: "stopped" and "finished" must not be
           // distinguishable by hue alone.

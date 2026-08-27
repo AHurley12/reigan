@@ -46,6 +46,14 @@ export function reduceStreamFrame(state: StreamState, frame: ChatStreamFrame): S
     }
   }
 
+  if (frame.event.kind === 'usage') {
+    const usage = frame.event.usage
+    return {
+      ...state,
+      messages: state.messages.map((m) => (m.id === targetId ? { ...m, usage } : m)),
+    }
+  }
+
   // kind === 'done' — every reason finalizes; they differ only in what they mark.
   const reason = frame.event.reason
   const failure = frame.event.message

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { ConversationList } from './ConversationList'
+import { ContextGauge } from './ContextGauge'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 
@@ -93,6 +94,8 @@ export function ChatPanel() {
       <div className="sr-only" role="status" aria-live="polite">
         {isStreaming ? 'Shingan is replying.' : ''}
       </div>
+
+      <ContextGauge />
 
       {/* Input bar */}
       <InputBar

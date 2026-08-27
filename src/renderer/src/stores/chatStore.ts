@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatAttachmentInput, ChatAttachmentMeta, ChatMessage, ChatStreamFrame } from '../../../shared/types'
+import type { ChatAttachmentInput, ChatAttachmentMeta, ChatMessage, ChatStreamFrame, TurnUsage } from '../../../shared/types'
 import { useAppStore } from './appStore'
 import { reduceStreamFrame, type StreamState } from './streamReducer'
 import { planResend } from './resendPlan'
@@ -95,7 +95,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const outcome = await window.reigan?.capabilities?.invoke<{
       conversation: { id: string; title: string }
-      messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+      messages: Array<{
+        id: string
+        role: 'user' | 'assistant'
+        content: string
+        timestamp: number
+        usage?: TurnUsage
+      }>
       attachments: ChatAttachmentMeta[]
     }>('chat.getConversation', { id })
 
@@ -117,6 +123,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         content: m.content,
         timestamp: m.timestamp,
         attachments: byMessage.get(m.id),
+        usage: m.usage,
       })),
       conversationId: id,
       isStreaming: false,

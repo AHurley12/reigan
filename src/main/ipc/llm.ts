@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { IPC } from '../../shared/types'
-import type { ChatAttachmentInput, ChatStreamEvent } from '../../shared/types'
+import type { ChatAttachmentInput, ChatStreamEvent, TurnUsage } from '../../shared/types'
 import { saveAttachments } from '../files/attachmentStore'
 import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
@@ -62,6 +62,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     if (attachments.length > 0) saveAttachments(userMessageId, attachments)
 
     let fullResponse = ''
+    let turnUsage: TurnUsage | undefined
     const hasKey = !!getDecodedSetting('anthropicApiKey')
 
     if (!hasKey) {
@@ -85,6 +86,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       // context window with files the question is no longer about.
       for await (const event of streamResponse(message, history, controller.signal, attachments)) {
         if (event.kind === 'token') fullResponse += event.text
+        if (event.kind === 'usage') turnUsage = event.usage
         emit(event)
       }
     } catch (err) {
@@ -129,7 +131,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     }
 
     emit({ kind: 'done', reason: 'complete' })
-    saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse })
+    saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse, usage: turnUsage })
 
     const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
     const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)

@@ -219,8 +219,20 @@ export async function* streamResponse(
   )
 
   let yieldedAny = false
+  // Summed, not overwritten. maxIterations is 5, so one turn can make several
+  // model calls — the tool loop calls back after every result — and reporting
+  // only the last one would understate what the turn actually cost.
+  let inputTokens = 0
+  let outputTokens = 0
 
   for await (const event of eventStream) {
+    if (event.event === 'on_chat_model_end') {
+      const usage = readUsage(event.data?.output)
+      inputTokens += usage.input
+      outputTokens += usage.output
+      continue
+    }
+
     if (event.event !== 'on_chat_model_stream') continue
     const content = event.data?.chunk?.content
 
@@ -239,11 +251,39 @@ export async function* streamResponse(
     }
   }
 
+  // Reported only when the API actually said something. An estimate here would
+  // be indistinguishable on screen from a measurement, and wrong.
+  if (inputTokens > 0 || outputTokens > 0) {
+    yield { kind: 'usage', usage: { inputTokens, outputTokens, model: resolveModel(config.model).id } }
+  }
+
   // A stop is not an empty answer. Without this check the "try rephrasing" line
   // would be appended to whatever the user had already stopped, which reads as
   // the assistant talking back after being interrupted.
   if (!yieldedAny && !signal?.aborted) {
     yield { kind: 'token', text: "I didn't have a response for that — try rephrasing." }
+  }
+}
+
+/**
+ * Pulls token counts off a finished model call.
+ *
+ * LangChain has carried these under two names across versions, so both are
+ * read. Anything missing counts as zero rather than throwing — a usage number
+ * is worth having but never worth failing a reply over.
+ */
+function readUsage(output: unknown): { input: number; output: number } {
+  const message = output as
+    | {
+        usage_metadata?: { input_tokens?: number; output_tokens?: number }
+        response_metadata?: { usage?: { input_tokens?: number; output_tokens?: number } }
+      }
+    | undefined
+
+  const meta = message?.usage_metadata ?? message?.response_metadata?.usage
+  return {
+    input: Number(meta?.input_tokens) || 0,
+    output: Number(meta?.output_tokens) || 0,
   }
 }
 

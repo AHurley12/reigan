@@ -909,6 +909,20 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 18,
+    name: 'message-token-usage',
+    // Measured usage, per assistant turn. Nullable and defaulted to 0 because
+    // every message written before this migration has no measurement, and a
+    // zero that means "not recorded" must not be presented as a real count —
+    // the renderer treats 0/0 as absent.
+    up: (db) => {
+      addColumnIfMissing(db, 'messages', 'input_tokens', 'INTEGER NOT NULL DEFAULT 0')
+      addColumnIfMissing(db, 'messages', 'output_tokens', 'INTEGER NOT NULL DEFAULT 0')
+      addColumnIfMissing(db, 'messages', 'model', 'TEXT')
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

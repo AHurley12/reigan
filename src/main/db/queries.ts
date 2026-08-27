@@ -120,12 +120,23 @@ export function saveMessage(params: {
   conversationId: string
   role: 'user' | 'assistant'
   content: string
+  usage?: { inputTokens: number; outputTokens: number; model: string }
 }): string {
   const db = getDatabase()
   const id = randomUUID()
   const now = Date.now()
-  db.prepare('INSERT INTO messages (id, conversation_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)').run(
-    id, params.conversationId, params.role, params.content, now
+  db.prepare(
+    `INSERT INTO messages (id, conversation_id, role, content, timestamp, input_tokens, output_tokens, model)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    params.conversationId,
+    params.role,
+    params.content,
+    now,
+    params.usage?.inputTokens ?? 0,
+    params.usage?.outputTokens ?? 0,
+    params.usage?.model ?? null
   )
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, params.conversationId)
   return id
@@ -136,6 +147,7 @@ export interface StoredMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+  usage?: { inputTokens: number; outputTokens: number; model: string }
 }
 
 export function getMessages(conversationId: string): StoredMessage[] {
@@ -145,20 +157,34 @@ export function getMessages(conversationId: string): StoredMessage[] {
   // that said otherwise, so the type was a lie the moment anything read it.
   const rows = db
     .prepare(
-      `SELECT id, role, content, timestamp
+      `SELECT id, role, content, timestamp, input_tokens, output_tokens, model
          FROM messages
         WHERE conversation_id = ?
         ORDER BY timestamp ASC, rowid ASC`
     )
-    .all(conversationId) as Array<{ id: string; role: string; content: string; timestamp: number }>
+    .all(conversationId) as Array<{
+      id: string; role: string; content: string; timestamp: number
+      input_tokens: number; output_tokens: number; model: string | null
+    }>
 
   // `rowid` breaks ties: a user turn and its reply can land in the same
   // millisecond, and without a tiebreaker the reply can sort above the question.
   // The `system` role is allowed by the table's CHECK but is never written and
   // has no renderer representation, so it is filtered rather than mis-rendered.
   return rows
-    .filter((r): r is StoredMessage => r.role === 'user' || r.role === 'assistant')
-    .map((r) => ({ id: r.id, role: r.role, content: r.content, timestamp: r.timestamp }))
+    .filter((r) => r.role === 'user' || r.role === 'assistant')
+    .map((r) => ({
+      id: r.id,
+      role: r.role as 'user' | 'assistant',
+      content: r.content,
+      timestamp: r.timestamp,
+      // Rows written before migration 18 carry 0/0 and no model. That means
+      // "never measured", not "cost nothing", so it is reported as absent.
+      usage:
+        r.model && (r.input_tokens > 0 || r.output_tokens > 0)
+          ? { inputTokens: r.input_tokens, outputTokens: r.output_tokens, model: r.model }
+          : undefined,
+    }))
 }
 
 /**
