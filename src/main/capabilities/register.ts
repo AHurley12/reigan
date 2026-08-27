@@ -1,4 +1,5 @@
 import { registerCapabilities } from './registry'
+import { chatCapabilities } from './defs/chat'
 import { taskCapabilities } from './defs/tasks'
 import { jobCapabilities } from './defs/jobs'
 import { fileCapabilities } from './defs/files'
@@ -17,6 +18,7 @@ import { vaultCapabilities } from './defs/vault'
  * shadowing a capability at some later call.
  */
 export function registerAllCapabilities(): void {
+  registerCapabilities(chatCapabilities)
   registerCapabilities(taskCapabilities)
   registerCapabilities(fileCapabilities)
   registerCapabilities(youtubeCapabilities)

@@ -864,6 +864,22 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 16,
+    name: 'chat-conversation-recency',
+    // The conversation sidebar lists newest-first. `conversations` has carried
+    // an `updated_at` since migration 1 but never an index on it, so that sort
+    // is a full scan — unnoticeable while nothing read the table, which is the
+    // state it was in: getMessages() had no callers and the whole persistence
+    // path was write-only.
+    up: (db) => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_conversations_updated_at
+          ON conversations(updated_at DESC);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

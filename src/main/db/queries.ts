@@ -115,11 +115,12 @@ export function createConversation(title = 'New Conversation'): string {
   return id
 }
 
+/** Returns the new row's id, so a caller can address the message it just wrote. */
 export function saveMessage(params: {
   conversationId: string
   role: 'user' | 'assistant'
   content: string
-}): void {
+}): string {
   const db = getDatabase()
   const id = randomUUID()
   const now = Date.now()
@@ -127,11 +128,117 @@ export function saveMessage(params: {
     id, params.conversationId, params.role, params.content, now
   )
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, params.conversationId)
+  return id
 }
 
-export function getMessages(conversationId: string): Array<{ id: string; role: string; content: string; timestamp: number }> {
+export interface StoredMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
+export function getMessages(conversationId: string): StoredMessage[] {
   const db = getDatabase()
-  return db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC').all(conversationId) as any[]
+  // Columns named explicitly rather than `SELECT *`. The old form returned the
+  // raw row — snake_case `conversation_id` and all — behind a declared type
+  // that said otherwise, so the type was a lie the moment anything read it.
+  const rows = db
+    .prepare(
+      `SELECT id, role, content, timestamp
+         FROM messages
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC, rowid ASC`
+    )
+    .all(conversationId) as Array<{ id: string; role: string; content: string; timestamp: number }>
+
+  // `rowid` breaks ties: a user turn and its reply can land in the same
+  // millisecond, and without a tiebreaker the reply can sort above the question.
+  // The `system` role is allowed by the table's CHECK but is never written and
+  // has no renderer representation, so it is filtered rather than mis-rendered.
+  return rows
+    .filter((r): r is StoredMessage => r.role === 'user' || r.role === 'assistant')
+    .map((r) => ({ id: r.id, role: r.role, content: r.content, timestamp: r.timestamp }))
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+}
+
+export function listConversations(params: { limit?: number; offset?: number; search?: string } = {}): ConversationSummary[] {
+  const db = getDatabase()
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200)
+  const offset = Math.max(params.offset ?? 0, 0)
+  const search = params.search?.trim()
+
+  const where = search ? 'WHERE c.title LIKE ? ESCAPE \'\\\'' : ''
+  const args: unknown[] = search ? [`%${escapeLike(search)}%`] : []
+
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.title, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+         FROM conversations c
+         ${where}
+        ORDER BY c.updated_at DESC
+        LIMIT ? OFFSET ?`
+    )
+    .all(...args, limit, offset) as Array<{
+      id: string; title: string; created_at: number; updated_at: number; message_count: number
+    }>
+
+  return rows.map(rowToConversation)
+}
+
+export function getConversation(id: string): ConversationSummary | null {
+  const db = getDatabase()
+  const row = db
+    .prepare(
+      `SELECT c.id, c.title, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+         FROM conversations c
+        WHERE c.id = ?`
+    )
+    .get(id) as { id: string; title: string; created_at: number; updated_at: number; message_count: number } | undefined
+
+  return row ? rowToConversation(row) : null
+}
+
+/** False when no such conversation exists, so a caller can report that honestly. */
+export function renameConversation(id: string, title: string): boolean {
+  const db = getDatabase()
+  const result = db
+    .prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?')
+    .run(title, Date.now(), id)
+  return result.changes > 0
+}
+
+/** Messages go with it: the foreign key declares ON DELETE CASCADE and
+ *  database.ts enables `foreign_keys`, so this is one statement, not two. */
+export function deleteConversation(id: string): boolean {
+  const db = getDatabase()
+  return db.prepare('DELETE FROM conversations WHERE id = ?').run(id).changes > 0
+}
+
+function rowToConversation(row: {
+  id: string; title: string; created_at: number; updated_at: number; message_count: number
+}): ConversationSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    messageCount: row.message_count,
+  }
+}
+
+/** `%` and `_` are wildcards in LIKE; a title search for "50%" must not match everything. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
 }
 
 // ── Settings ──

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
+import { ConversationList } from './ConversationList'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 
@@ -34,7 +35,13 @@ export function ChatPanel() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full">
+      <ConversationList />
+
+      {/* min-w-0 so a long unbroken code line in the transcript cannot push the
+          sidebar off the panel — a flex child's default min-width is its
+          content, not zero. */}
+      <div className="flex flex-col flex-1 min-w-0">
       {/* Message list */}
       <div
         ref={scrollRef}
@@ -74,6 +81,7 @@ export function ChatPanel() {
 
       {/* Input bar */}
       <InputBar onSend={sendMessage} inputRef={chatInputRef} />
+      </div>
     </div>
   )
 }

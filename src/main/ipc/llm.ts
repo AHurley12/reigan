@@ -2,12 +2,11 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { IPC } from '../../shared/types'
 import type { ChatStreamEvent } from '../../shared/types'
+import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
-
-let activeConversationId: string | null = null
 
 /**
  * In-flight generations, so the UI can stop one. Same shape as the capability
@@ -26,11 +25,15 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     const { message, history, conversationId } = payload
     const requestId = payload.requestId ?? randomUUID()
 
-    // Ensure we have a conversation
-    if (!activeConversationId) {
-      activeConversationId = conversationId ?? createConversation()
-    }
-    const convId = activeConversationId
+    // Resolved per call. This used to be a module-level `activeConversationId`
+    // that was assigned once and never reset, so the caller's conversationId was
+    // ignored for the rest of the process's life: clearing the chat gave the
+    // renderer a fresh transcript while main kept appending to the very first
+    // conversation row it had ever created.
+    //
+    // A new conversation is titled from its opening message, which is also the
+    // only place a title is ever set automatically.
+    const convId = conversationId ?? createConversation(deriveConversationTitle(message))
 
     /** Every frame goes out through here, so the destroyed-window guard exists once. */
     const emit = (event: ChatStreamEvent): void => {

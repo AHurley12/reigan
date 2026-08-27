@@ -9,6 +9,10 @@ interface ChatStore extends StreamState {
   startStreaming: (requestId: string) => string
   setConversationId: (id: string) => void
   clearMessages: () => void
+  /** Starts a fresh conversation. The row is created by main on the next send. */
+  newConversation: () => void
+  /** Replaces the transcript with a stored conversation, read back from SQLite. */
+  loadConversation: (id: string) => Promise<void>
   /** Sends a message as if typed — shared by the chat input and voice transcripts. */
   sendMessage: (text: string) => Promise<void>
   /** Stops the in-flight generation. The partial reply is kept. */
@@ -52,6 +56,42 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   clearMessages: () =>
     set({ messages: [], conversationId: null, streamingId: null, requestId: null, isStreaming: false }),
+
+  newConversation: () => {
+    // Main creates the row on the next send, titled from that message. Creating
+    // one here would litter the sidebar with empty conversations every time
+    // someone clicked New chat and then changed their mind.
+    void get().abort()
+    get().clearMessages()
+  },
+
+  loadConversation: async (id) => {
+    // Switching away from a live generation would leave it writing into a
+    // transcript that is no longer on screen.
+    if (get().isStreaming) await get().abort()
+
+    const outcome = await window.reigan?.capabilities?.invoke<{
+      conversation: { id: string; title: string }
+      messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+    }>('chat.getConversation', { id })
+
+    // A failed load leaves the current transcript alone rather than blanking
+    // it — losing what is on screen is worse than not switching.
+    if (!outcome?.ok || !outcome.result) return
+
+    set({
+      messages: outcome.result.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      })),
+      conversationId: id,
+      isStreaming: false,
+      streamingId: null,
+      requestId: null,
+    })
+  },
 
   sendMessage: async (text) => {
     const ipc = window.reigan
