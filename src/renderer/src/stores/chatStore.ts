@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { ChatMessage, ChatStreamFrame } from '../../../shared/types'
 import { useAppStore } from './appStore'
 import { reduceStreamFrame, type StreamState } from './streamReducer'
+import { planResend } from './resendPlan'
 
 interface ChatStore extends StreamState {
   conversationId: string | null
@@ -14,7 +15,12 @@ interface ChatStore extends StreamState {
   /** Replaces the transcript with a stored conversation, read back from SQLite. */
   loadConversation: (id: string) => Promise<void>
   /** Sends a message as if typed — shared by the chat input and voice transcripts. */
-  sendMessage: (text: string) => Promise<void>
+  sendMessage: (text: string, truncateFromTimestamp?: number) => Promise<void>
+  /**
+   * Regenerate, edit-and-resend, and retry — all three are this one operation:
+   * drop a user turn and everything after it, then send it again.
+   */
+  resendFrom: (messageId: string, newContent?: string) => Promise<void>
   /** Stops the in-flight generation. The partial reply is kept. */
   abort: () => Promise<void>
   /** Routes a raw IPC stream frame to the in-flight assistant message. */
@@ -93,7 +99,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     })
   },
 
-  sendMessage: async (text) => {
+  resendFrom: async (messageId, newContent) => {
+    const plan = planResend(get().messages, messageId, newContent)
+    if (!plan) return
+
+    // Abort first, then clear the streaming flags here rather than waiting for
+    // main's `done` frame. That frame is asynchronous, so without this the
+    // isStreaming guard below would still be true and the resend would be
+    // silently dropped. Nulling requestId is what makes the old generation's
+    // remaining frames land on nothing.
+    if (get().isStreaming) await get().abort()
+    set({ messages: plan.keep, isStreaming: false, streamingId: null, requestId: null })
+
+    await get().sendMessage(plan.text, plan.truncateFromTimestamp)
+  },
+
+  sendMessage: async (text, truncateFromTimestamp) => {
     const ipc = window.reigan
     if (!ipc) return
     // Voice can fire multiple "final" transcript segments in quick succession
@@ -111,7 +132,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     useAppStore.getState().setReiganState('processing')
 
     try {
-      await ipc.sendMessage({ message: text, history, conversationId: get().conversationId ?? undefined, requestId })
+      await ipc.sendMessage({
+        message: text,
+        history,
+        conversationId: get().conversationId ?? undefined,
+        requestId,
+        truncateFromTimestamp,
+      })
     } catch (err) {
       // The bridge itself failed, so no `done` frame is coming. Terminate the
       // message here or its cursor blinks forever.

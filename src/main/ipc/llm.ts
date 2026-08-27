@@ -4,7 +4,7 @@ import { IPC } from '../../shared/types'
 import type { ChatStreamEvent } from '../../shared/types'
 import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
-import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
+import { saveMessage, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
 
@@ -21,6 +21,8 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     history: Array<{ role: 'user' | 'assistant'; content: string }>
     conversationId?: string
     requestId?: string
+    /** Regenerate / edit-and-resend: drop this turn and everything after it first. */
+    truncateFromTimestamp?: number
   }) => {
     const { message, history, conversationId } = payload
     const requestId = payload.requestId ?? randomUUID()
@@ -39,6 +41,16 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     const emit = (event: ChatStreamEvent): void => {
       if (mainWindow.isDestroyed()) return
       mainWindow.webContents.send(IPC.LLM_STREAM, { requestId, conversationId: convId, event })
+    }
+
+    // Truncation happens here rather than through a capability of its own.
+    // A `write` capability would raise the approval dialog on every single
+    // regenerate — `requireApprovalForAllCapabilities` defaults on — and asking
+    // permission to redo the thing the user just clicked Redo on is noise.
+    // Doing it inside the send also keeps it atomic with the resend: there is no
+    // window where the old turn is gone and no new one has started.
+    if (conversationId && payload.truncateFromTimestamp !== undefined) {
+      deleteMessagesFrom(conversationId, payload.truncateFromTimestamp)
     }
 
     // Save user message

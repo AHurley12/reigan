@@ -161,6 +161,20 @@ export function getMessages(conversationId: string): StoredMessage[] {
     .map((r) => ({ id: r.id, role: r.role, content: r.content, timestamp: r.timestamp }))
 }
 
+/**
+ * Drops every message in a conversation at or after `timestamp`, and returns how
+ * many went. Used by regenerate / edit-and-resend, where the turn being replaced
+ * and everything that followed it stop being part of the conversation.
+ *
+ * Inclusive of the boundary: the resent user turn is itself replaced.
+ */
+export function deleteMessagesFrom(conversationId: string, timestamp: number): number {
+  const db = getDatabase()
+  return db
+    .prepare('DELETE FROM messages WHERE conversation_id = ? AND timestamp >= ?')
+    .run(conversationId, timestamp).changes
+}
+
 export interface ConversationSummary {
   id: string
   title: string

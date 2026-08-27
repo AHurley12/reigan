@@ -1,11 +1,13 @@
 import React from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import { useCopy } from './useCopy'
 
 interface Props {
   /** The raw markdown source, not the rendered text. */
   content: string
   align?: 'left' | 'right'
+  onRegenerate?: () => void
+  onEdit?: () => void
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * in the layout at zero opacity rather than being unmounted, so revealing it
  * does not reflow the message above it.
  */
-export function MessageActions({ content, align = 'left' }: Props) {
+export function MessageActions({ content, align = 'left', onRegenerate, onEdit }: Props) {
   const { copied, copy } = useCopy()
 
   return (
@@ -25,19 +27,28 @@ export function MessageActions({ content, align = 'left' }: Props) {
         group-hover:opacity-100 group-focus-within:opacity-100
         ${align === 'right' ? 'justify-end' : ''}`}
     >
-      <ActionButton
-        label={copied ? 'Copied' : 'Copy message'}
-        onClick={() => void copy(content)}
-      >
+      <ActionButton label={copied ? 'Copied' : 'Copy message'} onClick={() => void copy(content)}>
         {copied ? <Check size={12} /> : <Copy size={12} />}
       </ActionButton>
+
+      {onEdit && (
+        <ActionButton label="Edit and resend" onClick={onEdit}>
+          <Pencil size={12} />
+        </ActionButton>
+      )}
+
+      {onRegenerate && (
+        <ActionButton label="Regenerate reply" onClick={onRegenerate}>
+          <RotateCcw size={12} />
+        </ActionButton>
+      )}
     </div>
   )
 }
 
 /**
- * 24px minimum touch target even though the glyph is 12px — the icon is the
- * affordance, the button is the hit area.
+ * 24px minimum hit area even though the glyph is 12px — the icon is the
+ * affordance, the button is the target.
  */
 function ActionButton({
   label,
