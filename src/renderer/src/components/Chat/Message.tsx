@@ -1,5 +1,6 @@
 import React from 'react'
 import { StreamingText } from './StreamingText'
+import { MessageActions } from './MessageActions'
 import type { ChatMessage } from '../../../../shared/types'
 
 interface Props {
@@ -15,7 +16,7 @@ export function Message({ message }: Props) {
 
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
+      <div className="group flex justify-end mb-4">
         <div className="max-w-[75%] animate-slide-up">
           <div
             className="px-4 py-3 rounded-lg text-sm leading-relaxed"
@@ -32,13 +33,14 @@ export function Message({ message }: Props) {
               {formatTime(message.timestamp)}
             </span>
           </div>
+          <MessageActions content={message.content} align="right" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col mb-6 animate-fade-in">
+    <div className="group flex flex-col mb-6 animate-fade-in">
       <div className="flex items-center gap-2 mb-2">
         <span
           className="text-xs font-kanji tracking-wider"
@@ -59,6 +61,9 @@ export function Message({ message }: Props) {
       <div className="pl-1">
         <StreamingText content={message.content} isStreaming={message.isStreaming} />
       </div>
+      {/* Actions only once the reply has settled: copying a half-arrived
+          answer produces something the user did not mean to keep. */}
+      {!message.isStreaming && <MessageActions content={message.content} />}
     </div>
   )
 }

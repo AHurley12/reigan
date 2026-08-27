@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { InscribeText } from './InscribeText'
+import { MarkdownBody } from './MarkdownBody'
 
 interface Props {
   content: string
@@ -45,9 +44,7 @@ export function StreamingText({ content, isStreaming }: Props) {
           <InscribeText text={content} />
         </p>
       ) : (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {content}
-        </ReactMarkdown>
+        <MarkdownBody>{content}</MarkdownBody>
       )}
       {showCursor && (
         <span
