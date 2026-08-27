@@ -14,9 +14,24 @@ import { useCopy } from './useCopy'
  */
 export function MarkdownBody({ children }: { children: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: CodeBlock }}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: CodeBlock, table: Table }}>
       {children}
     </ReactMarkdown>
+  )
+}
+
+/**
+ * A table in its own horizontal scroller.
+ *
+ * A wide table must scroll inside its own container rather than widening the
+ * transcript — the chat column is already constrained, and a table with eight
+ * columns of data would otherwise push the composer and the sidebar off screen.
+ */
+function Table({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) {
+  return (
+    <div className="overflow-x-auto my-2">
+      <table {...props}>{children}</table>
+    </div>
   )
 }
 

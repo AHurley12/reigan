@@ -3,6 +3,7 @@ import { MessageSquarePlus, Search, Trash2 } from 'lucide-react'
 import { useCapability } from '../DevTools/useCapability'
 import { AsyncPane } from '../DevTools/shared/AsyncPane'
 import { VirtualList } from '../DevTools/shared/VirtualList'
+import { SectionHeader } from '../shared/SectionHeader'
 import { useChatStore } from '../../stores/chatStore'
 
 interface Conversation {
@@ -68,11 +69,19 @@ export function ConversationList() {
 
   return (
     <div className="rule-r flex flex-col shrink-0 w-[232px] h-full" style={{ background: 'var(--bg-void)' }}>
-      <div className="rule-b flex items-center gap-2 px-3 py-2.5 shrink-0">
+      <div className="rule-b flex flex-col gap-2 px-3 py-2.5 shrink-0">
+        {/* Every other panel titles itself this way, and SectionHeader is what
+            respects the Japanese level and furigana settings. A hand-written
+            label here would be the one heading in the app that ignores them. */}
+        <SectionHeader en="Conversations" ja="会話" romaji="kaiwa" />
         <button
           onClick={newConversation}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-xs flex-1 transition-colors"
-          style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-xs transition-colors"
+          style={{
+            border: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
+            transitionDuration: 'var(--duration-fast)',
+          }}
         >
           <MessageSquarePlus size={13} />
           New chat

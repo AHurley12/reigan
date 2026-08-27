@@ -6,9 +6,6 @@ import { getDatabase } from '../db/database'
 import { checkAttachment, type AttachmentKind } from '../../shared/attachmentPolicy'
 import type { ChatAttachmentInput, ChatAttachmentMeta } from '../../shared/types'
 
-export type StoredAttachment = ChatAttachmentMeta
-export type IncomingAttachment = ChatAttachmentInput
-
 const EXTENSION: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -31,12 +28,12 @@ function attachmentsDir(): string {
  * policy refuses is skipped rather than throwing, so one bad file cannot cost
  * the user the whole message they just sent.
  */
-export function saveAttachments(messageId: string, incoming: IncomingAttachment[]): StoredAttachment[] {
+export function saveAttachments(messageId: string, incoming: ChatAttachmentInput[]): ChatAttachmentMeta[] {
   if (incoming.length === 0) return []
 
   const db = getDatabase()
   const dir = attachmentsDir()
-  const saved: StoredAttachment[] = []
+  const saved: ChatAttachmentMeta[] = []
   const accepted: Array<{ name: string; mimeType: string; byteSize: number }> = []
 
   const insert = db.prepare(
@@ -71,7 +68,7 @@ export function saveAttachments(messageId: string, incoming: IncomingAttachment[
   return saved
 }
 
-export function getAttachmentsForConversation(conversationId: string): StoredAttachment[] {
+export function getAttachmentsForConversation(conversationId: string): ChatAttachmentMeta[] {
   const db = getDatabase()
   const rows = db
     .prepare(

@@ -43,8 +43,16 @@ export function ContextGauge() {
         aria-label={`${reading.label}: ${reading.used} of ${reading.window} tokens`}
       >
         <div
-          className="h-full transition-all duration-fast"
-          style={{ width: `${reading.fraction * 100}%`, background: color }}
+          className="h-full"
+          style={{
+            width: `${reading.fraction * 100}%`,
+            background: color,
+            // Tailwind's duration-fast is a hardcoded 120ms, not wired to
+            // --motion-duration-fast, so it would not follow gothic's 150ms or
+            // sakura's 160ms. Named properties only — never `transition: all`.
+            transitionProperty: 'width, background-color',
+            transitionDuration: 'var(--duration-fast)',
+          }}
         />
       </div>
 

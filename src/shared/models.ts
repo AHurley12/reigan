@@ -58,7 +58,7 @@ export const MODELS: ModelInfo[] = [
 /** What the app used before the picker existed. Changing this changes behaviour. */
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
-export function findModel(id: string): ModelInfo | undefined {
+function findModel(id: string): ModelInfo | undefined {
   return MODELS.find((m) => m.id === id)
 }
 

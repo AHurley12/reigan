@@ -23,9 +23,11 @@ export function MessageActions({ content, align = 'left', onRegenerate, onEdit }
 
   return (
     <div
-      className={`flex items-center gap-1 mt-1 opacity-0 transition-opacity duration-fast
+      className={`flex items-center gap-1 mt-1 opacity-0 transition-opacity
         group-hover:opacity-100 group-focus-within:opacity-100
         ${align === 'right' ? 'justify-end' : ''}`}
+      // Follows the skin's own timing rather than Tailwind's hardcoded 120ms.
+      style={{ transitionDuration: 'var(--duration-fast)' }}
     >
       <ActionButton label={copied ? 'Copied' : 'Copy message'} onClick={() => void copy(content)}>
         {copied ? <Check size={12} /> : <Copy size={12} />}

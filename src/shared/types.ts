@@ -111,14 +111,6 @@ export interface ChatStreamFrame {
   event: ChatStreamEvent;
 }
 
-export interface Conversation {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
-}
-
 // ── Tasks ──
 export type TaskStatus = 'backlog' | 'active' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
