@@ -880,6 +880,35 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 17,
+    name: 'message-attachments',
+    // Metadata only. The bytes live on disk under userData/attachments, because
+    // this database already ships a multi-megabyte WAL and inlining images and
+    // PDFs as blobs would grow both it and every backup of it without bound.
+    //
+    // ON DELETE CASCADE removes the row with its message; the file it points at
+    // is swept separately at startup, since SQLite cannot unlink anything.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS message_attachments (
+          id         TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL,
+          kind       TEXT NOT NULL CHECK (kind IN ('image', 'document')),
+          mime_type  TEXT NOT NULL,
+          filename   TEXT NOT NULL,
+          byte_size  INTEGER NOT NULL DEFAULT 0,
+          path       TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_message_attachments_message
+          ON message_attachments(message_id);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

@@ -13,7 +13,45 @@ import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
-import type { ChatStreamEvent, PersonalityMode } from '../../shared/types'
+import { classify } from '../../shared/attachmentPolicy'
+import type { ChatAttachmentInput, ChatStreamEvent, PersonalityMode } from '../../shared/types'
+
+/**
+ * Builds the human turn, with attachments as content blocks alongside the text.
+ *
+ * The block shapes are the ones @langchain/anthropic translates: `image_url`
+ * with a data URL becomes an Anthropic `image` block, and a `file` block with a
+ * base64 source and a PDF mime type becomes a `document` block. Anything the
+ * policy does not classify is dropped rather than sent in a shape the converter
+ * would throw on.
+ */
+function buildTurnMessage(text: string, attachments: ChatAttachmentInput[]): HumanMessage {
+  if (attachments.length === 0) return new HumanMessage(text)
+
+  const blocks: Record<string, unknown>[] = []
+
+  for (const attachment of attachments) {
+    const kind = classify(attachment.mimeType)
+    if (kind === 'image') {
+      blocks.push({
+        type: 'image_url',
+        image_url: { url: `data:${attachment.mimeType};base64,${attachment.data}` },
+      })
+    } else if (kind === 'document') {
+      blocks.push({
+        type: 'file',
+        source_type: 'base64',
+        mime_type: attachment.mimeType,
+        data: attachment.data,
+      })
+    }
+  }
+
+  // Text last: the question should read as being about the things above it.
+  blocks.push({ type: 'text', text })
+
+  return new HumanMessage({ content: blocks as never })
+}
 
 let executor: AgentExecutor | null = null
 let executorMode: PersonalityMode | null = null
@@ -68,10 +106,18 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   const tools = getTools()
   const systemPrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
 
+  // `input` is a MessagesPlaceholder rather than the ['human', '{input}'] string
+  // template it used to be. A string template runs its value through f-string
+  // formatting, which stringifies an array of content blocks into JSON — so
+  // images and PDFs arrived at the model as text describing an image.
+  //
+  // For a text-only turn the two forms are byte-identical (verified: same
+  // rendered messages, same declared inputVariables), so nothing about the
+  // existing path changes.
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
     new MessagesPlaceholder('chat_history'),
-    ['human', '{input}'],
+    new MessagesPlaceholder('input'),
     new MessagesPlaceholder('agent_scratchpad'),
   ])
 
@@ -91,7 +137,8 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
 export async function* streamResponse(
   input: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  attachments: ChatAttachmentInput[] = []
 ): AsyncGenerator<ChatStreamEvent> {
   const apiKey = getApiKey()
   if (!apiKey) {
@@ -113,7 +160,7 @@ export async function* streamResponse(
   // '/streamed_output_str/-' path (which only fires for string-typed outputs) never
   // matches. streamEvents v2 gives per-token deltas from the underlying chat model instead.
   const eventStream = executor.streamEvents(
-    { input, chat_history: chatHistory },
+    { input: [buildTurnMessage(input, attachments)], chat_history: chatHistory },
     { version: 'v2', signal }
   )
 

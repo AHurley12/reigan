@@ -26,7 +26,7 @@ const api = {
   initialThemeId,
 
   // LLM
-  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string; truncateFromTimestamp?: number }) =>
+  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string; truncateFromTimestamp?: number; attachments?: import('../shared/types').ChatAttachmentInput[] }) =>
     ipcRenderer.invoke(IPC.LLM_SEND, payload),
   /** Stops one in-flight generation. Resolves false if it had already finished. */
   abortMessage: (requestId: string) => ipcRenderer.invoke(IPC.LLM_ABORT, requestId),

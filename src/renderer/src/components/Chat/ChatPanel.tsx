@@ -95,7 +95,10 @@ export function ChatPanel() {
       </div>
 
       {/* Input bar */}
-      <InputBar onSend={sendMessage} inputRef={chatInputRef} />
+      <InputBar
+        onSend={(text, attachments) => void sendMessage(text, { attachments })}
+        inputRef={chatInputRef}
+      />
       </div>
     </div>
   )

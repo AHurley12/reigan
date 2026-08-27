@@ -17,6 +17,7 @@ import { getDatabase, closeDatabase } from './db/database'
 import { getDecodedSetting } from './db/queries'
 import { migrateSecretsToSafeStorage } from './db/secrets'
 import { registerCapabilityHandlers } from './capabilities/ipc'
+import { pruneOrphanAttachments } from './files/attachmentStore'
 import { registerAllCapabilities } from './capabilities/register'
 import { seedTemplates } from './devtools/vault/templates'
 import { initJobEngine } from './jobs'
@@ -156,6 +157,12 @@ if (!gotSingleInstanceLock) {
     // generic IPC surface the renderer and the agent both dispatch through.
     registerAllCapabilities()
     registerCapabilityHandlers(mainWindow)
+
+    // Deleting a conversation cascades its attachment rows away, but SQLite
+    // cannot unlink the files they pointed at. Without this sweep every deleted
+    // conversation leaks its images and PDFs onto disk permanently.
+    const pruned = pruneOrphanAttachments()
+    if (pruned > 0) console.log(`[attachments] removed ${pruned} orphaned file(s)`)
 
     // Idempotent: seeds the shipped config templates on first run only.
     const seeded = seedTemplates()

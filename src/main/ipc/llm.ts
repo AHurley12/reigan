@@ -1,7 +1,8 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { IPC } from '../../shared/types'
-import type { ChatStreamEvent } from '../../shared/types'
+import type { ChatAttachmentInput, ChatStreamEvent } from '../../shared/types'
+import { saveAttachments } from '../files/attachmentStore'
 import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
@@ -23,7 +24,9 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     requestId?: string
     /** Regenerate / edit-and-resend: drop this turn and everything after it first. */
     truncateFromTimestamp?: number
+    attachments?: ChatAttachmentInput[]
   }) => {
+    const attachments = payload.attachments ?? []
     const { message, history, conversationId } = payload
     const requestId = payload.requestId ?? randomUUID()
 
@@ -53,8 +56,10 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       deleteMessagesFrom(conversationId, payload.truncateFromTimestamp)
     }
 
-    // Save user message
-    saveMessage({ conversationId: convId, role: 'user', content: message })
+    // Save user message. Its id is needed immediately: attachments hang off it,
+    // and the FK means they cannot be written before it exists.
+    const userMessageId = saveMessage({ conversationId: convId, role: 'user', content: message })
+    if (attachments.length > 0) saveAttachments(userMessageId, attachments)
 
     let fullResponse = ''
     const hasKey = !!getDecodedSetting('anthropicApiKey')
@@ -75,7 +80,10 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
 
     try {
-      for await (const event of streamResponse(message, history, controller.signal)) {
+      // Only this turn's attachments are sent. Replaying every historical image
+      // on every subsequent turn would multiply cost silently and fill the
+      // context window with files the question is no longer about.
+      for await (const event of streamResponse(message, history, controller.signal, attachments)) {
         if (event.kind === 'token') fullResponse += event.text
         emit(event)
       }

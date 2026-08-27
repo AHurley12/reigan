@@ -26,6 +26,26 @@ export interface ChatMessage {
   stoppedByUser?: boolean;
   /** Set when the turn failed. Rendered as an error block, never as model output. */
   error?: string;
+  /** Files sent with this turn. Metadata only — the bytes stay on disk. */
+  attachments?: ChatAttachmentMeta[];
+}
+
+/** An attachment on its way to the model, before it has been stored. */
+export interface ChatAttachmentInput {
+  filename: string;
+  mimeType: string;
+  /** Raw base64, with no `data:` prefix. */
+  data: string;
+}
+
+/** A stored attachment, as the transcript renders it. Carries no bytes. */
+export interface ChatAttachmentMeta {
+  id: string;
+  messageId: string;
+  kind: 'image' | 'document';
+  mimeType: string;
+  filename: string;
+  byteSize: number;
 }
 
 export type ChatDoneReason = 'complete' | 'aborted' | 'error';

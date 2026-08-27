@@ -1,5 +1,5 @@
 import React, { useState, KeyboardEvent } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { FileText, Image as ImageIcon, RotateCcw } from 'lucide-react'
 import { StreamingText } from './StreamingText'
 import { MessageActions } from './MessageActions'
 import { MessageError } from './MessageError'
@@ -36,6 +36,24 @@ export function Message({ message }: Props) {
     return (
       <div className="group flex justify-end mb-4">
         <div className="max-w-[75%] animate-slide-up">
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 justify-end mb-1.5">
+              {message.attachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px]"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {attachment.kind === 'image' ? <ImageIcon size={10} /> : <FileText size={10} />}
+                  <span className="max-w-[180px] truncate">{attachment.filename}</span>
+                </span>
+              ))}
+            </div>
+          )}
           <div
             className="px-4 py-3 rounded-lg text-sm leading-relaxed"
             style={{

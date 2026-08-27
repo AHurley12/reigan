@@ -8,7 +8,9 @@ import {
   type ConversationSummary,
   type StoredMessage,
 } from '../../db/queries'
+import { getAttachmentsForConversation } from '../../files/attachmentStore'
 import { CapabilityError, type AnyCapability } from '../types'
+import type { ChatAttachmentMeta } from '../../../shared/types'
 
 /**
  * Conversation history, as capabilities rather than as four new IPC channels.
@@ -46,10 +48,20 @@ export const chatCapabilities: AnyCapability[] = [
       'Fetch one conversation with its full message history, oldest message first.',
     risk: 'read',
     schema: z.object({ id: z.string().min(1) }),
-    handler: (args: { id: string }): { conversation: ConversationSummary; messages: StoredMessage[] } => {
+    handler: (args: { id: string }): {
+      conversation: ConversationSummary
+      messages: StoredMessage[]
+      attachments: ChatAttachmentMeta[]
+    } => {
       const conversation = getConversation(args.id)
       if (!conversation) throw new CapabilityError(`No conversation with id "${args.id}".`, 'not_found')
-      return { conversation, messages: getMessages(args.id) }
+      // Metadata only — never the bytes. This crosses IPC and is also rendered
+      // into the model's tool result, and a base64 PDF has no business in either.
+      return {
+        conversation,
+        messages: getMessages(args.id),
+        attachments: getAttachmentsForConversation(args.id),
+      }
     },
     formatResult: (r: { conversation: ConversationSummary; messages: StoredMessage[] }) =>
       `"${r.conversation.title}" — ${r.messages.length} message${r.messages.length === 1 ? '' : 's'}.`,
