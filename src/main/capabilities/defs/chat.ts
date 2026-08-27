@@ -7,6 +7,8 @@ import {
   deleteConversation,
   type ConversationSummary,
   type StoredMessage,
+  getToolCallsForConversation,
+  type StoredToolCall,
 } from '../../db/queries'
 import { getAttachmentsForConversation } from '../../files/attachmentStore'
 import { CapabilityError, type AnyCapability } from '../types'
@@ -52,6 +54,7 @@ export const chatCapabilities: AnyCapability[] = [
       conversation: ConversationSummary
       messages: StoredMessage[]
       attachments: ChatAttachmentMeta[]
+      toolCalls: StoredToolCall[]
     } => {
       const conversation = getConversation(args.id)
       if (!conversation) throw new CapabilityError(`No conversation with id "${args.id}".`, 'not_found')
@@ -61,6 +64,7 @@ export const chatCapabilities: AnyCapability[] = [
         conversation,
         messages: getMessages(args.id),
         attachments: getAttachmentsForConversation(args.id),
+        toolCalls: getToolCallsForConversation(args.id),
       }
     },
     formatResult: (r: { conversation: ConversationSummary; messages: StoredMessage[] }) =>

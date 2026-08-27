@@ -15,6 +15,7 @@ import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
 import { classify } from '../../shared/attachmentPolicy'
 import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET, resolveModel, resolveSampling } from '../../shared/models'
+import { serialiseArgs } from '../capabilities/audit'
 import type { ChatAttachmentInput, ChatStreamEvent, PersonalityMode } from '../../shared/types'
 
 /**
@@ -225,7 +226,54 @@ export async function* streamResponse(
   let inputTokens = 0
   let outputTokens = 0
 
+  // Tool runs, keyed by LangChain's run id so start and end can be paired.
+  const openTools = new Map<string, { seq: number; startedAt: number }>()
+  let toolSeq = 0
+
   for await (const event of eventStream) {
+    if (event.event === 'on_tool_start') {
+      toolSeq += 1
+      openTools.set(event.run_id, { seq: toolSeq, startedAt: Date.now() })
+      yield {
+        kind: 'tool',
+        call: {
+          id: event.run_id,
+          seq: toolSeq,
+          name: event.name ?? 'tool',
+          status: 'running',
+          // Redacted here, in main, before it crosses IPC. Doing it in the
+          // renderer would mean the raw value had already left the process.
+          argsPreview: serialiseArgs(event.data?.input),
+          resultPreview: null,
+          durationMs: null,
+        },
+      }
+      continue
+    }
+
+    if (event.event === 'on_tool_end' || event.event === 'on_tool_error') {
+      const open = openTools.get(event.run_id)
+      openTools.delete(event.run_id)
+      const failed = event.event === 'on_tool_error'
+      yield {
+        kind: 'tool',
+        call: {
+          id: event.run_id,
+          seq: open?.seq ?? ++toolSeq,
+          name: event.name ?? 'tool',
+          status: failed ? 'error' : 'ok',
+          argsPreview: null,
+          // `error` is only present on the error variant, which LangChain's
+          // StreamEventData union does not narrow for us here.
+          resultPreview: truncatePreview(
+            failed ? (event.data as { error?: unknown })?.error : event.data?.output
+          ),
+          durationMs: open ? Date.now() - open.startedAt : null,
+        },
+      }
+      continue
+    }
+
     if (event.event === 'on_chat_model_end') {
       const usage = readUsage(event.data?.output)
       inputTokens += usage.input
@@ -263,6 +311,21 @@ export async function* streamResponse(
   if (!yieldedAny && !signal?.aborted) {
     yield { kind: 'token', text: "I didn't have a response for that — try rephrasing." }
   }
+}
+
+/** A shell command's output can be 100KB. That must not cross IPC or sit in React state. */
+const MAX_RESULT_PREVIEW = 600
+
+function truncatePreview(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  let text: string
+  try {
+    text = typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return '[unserialisable]'
+  }
+  if (!text) return null
+  return text.length > MAX_RESULT_PREVIEW ? `${text.slice(0, MAX_RESULT_PREVIEW)}…[truncated]` : text
 }
 
 /**

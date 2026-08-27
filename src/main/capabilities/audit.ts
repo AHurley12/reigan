@@ -38,7 +38,12 @@ function redact(value: unknown, depth = 0): unknown {
   return value
 }
 
-function serialiseArgs(args: unknown): string | null {
+/**
+ * Exported so the chat transcript's tool cards redact through this exact
+ * function rather than a second copy of the key list. A second copy drifts, and
+ * the failure mode of drift here is a vault body reaching the renderer.
+ */
+export function serialiseArgs(args: unknown): string | null {
   if (args === undefined || args === null) return null
   try {
     const json = JSON.stringify(redact(args))

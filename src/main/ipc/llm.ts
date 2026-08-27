@@ -1,11 +1,11 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { IPC } from '../../shared/types'
-import type { ChatAttachmentInput, ChatStreamEvent, TurnUsage } from '../../shared/types'
+import type { ChatAttachmentInput, ChatStreamEvent, ToolCallEvent, TurnUsage } from '../../shared/types'
 import { saveAttachments } from '../files/attachmentStore'
 import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
-import { saveMessage, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
+import { saveMessage, saveToolCalls, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
 
@@ -63,6 +63,9 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
 
     let fullResponse = ''
     let turnUsage: TurnUsage | undefined
+    // Merged by run id: a tool arrives as a start (name, args) and later an end
+    // (result, duration), and the stored row wants both halves.
+    const toolCalls = new Map<string, ToolCallEvent>()
     const hasKey = !!getDecodedSetting('anthropicApiKey')
 
     if (!hasKey) {
@@ -87,6 +90,15 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       for await (const event of streamResponse(message, history, controller.signal, attachments)) {
         if (event.kind === 'token') fullResponse += event.text
         if (event.kind === 'usage') turnUsage = event.usage
+        if (event.kind === 'tool') {
+          const previous = toolCalls.get(event.call.id)
+          toolCalls.set(event.call.id, {
+            ...event.call,
+            // The end event carries no args and the start carries no result.
+            argsPreview: event.call.argsPreview ?? previous?.argsPreview ?? null,
+            resultPreview: event.call.resultPreview ?? previous?.resultPreview ?? null,
+          })
+        }
         emit(event)
       }
     } catch (err) {
@@ -131,7 +143,13 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     }
 
     emit({ kind: 'done', reason: 'complete' })
-    saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse, usage: turnUsage })
+    const assistantMessageId = saveMessage({
+      conversationId: convId,
+      role: 'assistant',
+      content: fullResponse,
+      usage: turnUsage,
+    })
+    saveToolCalls(assistantMessageId, [...toolCalls.values()].sort((a, b) => a.seq - b.seq))
 
     const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
     const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)

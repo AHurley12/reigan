@@ -30,6 +30,8 @@ export interface ChatMessage {
   attachments?: ChatAttachmentMeta[];
   /** Measured, never estimated. Absent when the API reported nothing. */
   usage?: TurnUsage;
+  /** What the agent did to produce this reply, in the order it did it. */
+  toolCalls?: ToolCallEvent[];
 }
 
 /** An attachment on its way to the model, before it has been stored. */
@@ -73,8 +75,28 @@ export interface TurnUsage {
   model: string;
 }
 
+export type ToolCallStatus = 'running' | 'ok' | 'error';
+
+/**
+ * One tool the agent reached for, as the transcript shows it.
+ *
+ * Arguments and results are already redacted and truncated by main. Nothing on
+ * this type carries a raw value.
+ */
+export interface ToolCallEvent {
+  id: string;
+  /** Order within the turn, so cards render in the sequence they ran. */
+  seq: number;
+  name: string;
+  status: ToolCallStatus;
+  argsPreview: string | null;
+  resultPreview: string | null;
+  durationMs: number | null;
+}
+
 export type ChatStreamEvent =
   | { kind: 'token'; text: string }
+  | { kind: 'tool'; call: ToolCallEvent }
   | { kind: 'usage'; usage: TurnUsage }
   | { kind: 'done'; reason: ChatDoneReason; message?: string };
 

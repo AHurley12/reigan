@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatStreamFrame } from '../../../shared/types'
+import { mergeToolCall } from '../components/Chat/toolCallSummary'
 
 /**
  * The part of the chat store a stream frame actually touches, split out of
@@ -42,6 +43,16 @@ export function reduceStreamFrame(state: StreamState, frame: ChatStreamFrame): S
       ...state,
       messages: state.messages.map((m) =>
         m.id === targetId ? { ...m, content: m.content + text } : m
+      ),
+    }
+  }
+
+  if (frame.event.kind === 'tool') {
+    const call = frame.event.call
+    return {
+      ...state,
+      messages: state.messages.map((m) =>
+        m.id === targetId ? { ...m, toolCalls: mergeToolCall(m.toolCalls, call) } : m
       ),
     }
   }

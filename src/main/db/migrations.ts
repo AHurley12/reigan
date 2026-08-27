@@ -923,6 +923,38 @@ export const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, 'messages', 'model', 'TEXT')
     },
   },
+
+  {
+    version: 19,
+    name: 'message-tool-calls',
+    // What the agent did to produce a reply. Separate from capability_audit on
+    // purpose: that table records every dispatch from every caller and is the
+    // security record, while this one belongs to a message and disappears with
+    // it. The legacy hand-written tools are not capabilities and never reach
+    // the audit table at all, so it could not have served as the display source.
+    //
+    // args_preview and result_preview are already redacted and truncated before
+    // they are written.
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS message_tool_calls (
+          id             TEXT PRIMARY KEY,
+          message_id     TEXT NOT NULL,
+          seq            INTEGER NOT NULL,
+          tool_name      TEXT NOT NULL,
+          status         TEXT NOT NULL CHECK (status IN ('running', 'ok', 'error')),
+          args_preview   TEXT,
+          result_preview TEXT,
+          duration_ms    INTEGER,
+          created_at     INTEGER NOT NULL,
+          FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_message_tool_calls_message
+          ON message_tool_calls(message_id, seq);
+      `)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */

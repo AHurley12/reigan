@@ -201,6 +201,78 @@ export function deleteMessagesFrom(conversationId: string, timestamp: number): n
     .run(conversationId, timestamp).changes
 }
 
+/** Previews are redacted and truncated by the caller, never here. */
+export function saveToolCalls(
+  messageId: string,
+  calls: Array<{
+    seq: number
+    name: string
+    status: 'running' | 'ok' | 'error'
+    argsPreview: string | null
+    resultPreview: string | null
+    durationMs: number | null
+  }>
+): void {
+  if (calls.length === 0) return
+  const db = getDatabase()
+  const insert = db.prepare(
+    `INSERT INTO message_tool_calls
+       (id, message_id, seq, tool_name, status, args_preview, result_preview, duration_ms, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  const now = Date.now()
+  // One transaction: a turn's tool cards are meaningless individually, and a
+  // partial write would render a reply as having done half of what it did.
+  db.transaction(() => {
+    for (const call of calls) {
+      insert.run(
+        randomUUID(), messageId, call.seq, call.name, call.status,
+        call.argsPreview, call.resultPreview, call.durationMs, now
+      )
+    }
+  })()
+}
+
+export interface StoredToolCall {
+  id: string
+  messageId: string
+  seq: number
+  name: string
+  status: 'running' | 'ok' | 'error'
+  argsPreview: string | null
+  resultPreview: string | null
+  durationMs: number | null
+}
+
+export function getToolCallsForConversation(conversationId: string): StoredToolCall[] {
+  const db = getDatabase()
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.message_id, t.seq, t.tool_name, t.status,
+              t.args_preview, t.result_preview, t.duration_ms
+         FROM message_tool_calls t
+         JOIN messages m ON m.id = t.message_id
+        WHERE m.conversation_id = ?
+        ORDER BY t.message_id, t.seq ASC`
+    )
+    .all(conversationId) as Array<{
+      id: string; message_id: string; seq: number; tool_name: string
+      status: 'running' | 'ok' | 'error'
+      args_preview: string | null; result_preview: string | null; duration_ms: number | null
+    }>
+
+  return rows.map((r) => ({
+    id: r.id,
+    messageId: r.message_id,
+    seq: r.seq,
+    name: r.tool_name,
+    status: r.status,
+    argsPreview: r.args_preview,
+    resultPreview: r.result_preview,
+    durationMs: r.duration_ms,
+  }))
+}
+
 export interface ConversationSummary {
   id: string
   title: string

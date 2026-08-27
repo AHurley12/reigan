@@ -4,6 +4,7 @@ import { StreamingText } from './StreamingText'
 import { MessageActions } from './MessageActions'
 import { MessageError } from './MessageError'
 import { formatTokens } from './contextUsage'
+import { ToolCallList } from './ToolCallList'
 import { useChatStore } from '../../stores/chatStore'
 import type { ChatMessage } from '../../../../shared/types'
 
@@ -118,6 +119,9 @@ export function Message({ message }: Props) {
         )}
       </div>
       <div className="pl-1">
+        {message.toolCalls && message.toolCalls.length > 0 && (
+          <ToolCallList calls={message.toolCalls} />
+        )}
         <StreamingText content={message.content} isStreaming={message.isStreaming} />
       </div>
 

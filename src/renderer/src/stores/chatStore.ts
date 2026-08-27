@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatAttachmentInput, ChatAttachmentMeta, ChatMessage, ChatStreamFrame, TurnUsage } from '../../../shared/types'
+import type { ChatAttachmentInput, ChatAttachmentMeta, ChatMessage, ChatStreamFrame, ToolCallEvent, TurnUsage } from '../../../shared/types'
 import { useAppStore } from './appStore'
 import { reduceStreamFrame, type StreamState } from './streamReducer'
 import { planResend } from './resendPlan'
@@ -103,6 +103,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         usage?: TurnUsage
       }>
       attachments: ChatAttachmentMeta[]
+      toolCalls: Array<ToolCallEvent & { messageId: string }>
     }>('chat.getConversation', { id })
 
     // A failed load leaves the current transcript alone rather than blanking
@@ -116,6 +117,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       byMessage.set(a.messageId, list)
     }
 
+    const toolsByMessage = new Map<string, ToolCallEvent[]>()
+    for (const call of outcome.result.toolCalls ?? []) {
+      const list = toolsByMessage.get(call.messageId) ?? []
+      list.push(call)
+      toolsByMessage.set(call.messageId, list)
+    }
+
     set({
       messages: outcome.result.messages.map((m) => ({
         id: m.id,
@@ -124,6 +132,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         timestamp: m.timestamp,
         attachments: byMessage.get(m.id),
         usage: m.usage,
+        toolCalls: toolsByMessage.get(m.id),
       })),
       conversationId: id,
       isStreaming: false,
