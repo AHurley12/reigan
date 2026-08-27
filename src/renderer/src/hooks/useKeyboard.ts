@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../stores/appStore'
+import { useChatStore } from '../stores/chatStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useToastStore } from '../stores/toastStore'
 import type { AppModule } from '../../../shared/types'
@@ -46,7 +47,13 @@ export function useKeyboard(onFocusChat?: () => void) {
         e.preventDefault()
         setActiveModule(MODULE_KEYS[e.key])
       } else if (e.key === 'Escape') {
-        setSettingsOpen(false)
+        // Settings first: Escape has always closed the panel, and stopping a
+        // generation the user cannot currently see would be a surprise.
+        if (useAppStore.getState().settingsOpen) {
+          setSettingsOpen(false)
+        } else if (useChatStore.getState().isStreaming) {
+          void useChatStore.getState().abort()
+        }
       }
     }
 

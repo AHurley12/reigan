@@ -24,7 +24,7 @@ export default function App() {
   // App-level so streaming responses land even when Chat isn't the active module.
   useEffect(() => {
     if (!ipc) return
-    return ipc.onStream((data) => useChatStore.getState().handleStreamEvent(data))
+    return ipc.onStream((frame) => useChatStore.getState().handleStreamFrame(frame))
   }, [ipc])
 
   return (

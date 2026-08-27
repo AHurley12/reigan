@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type FileSearchParams, type JobNotification } from '../shared/types'
+import { IPC, type ChatStreamFrame, type FileSearchParams, type JobNotification } from '../shared/types'
 import { authBridge } from './authBridge'
 
 // Main reads the persisted theme synchronously (better-sqlite3) before creating
@@ -26,10 +26,12 @@ const api = {
   initialThemeId,
 
   // LLM
-  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) =>
+  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string }) =>
     ipcRenderer.invoke(IPC.LLM_SEND, payload),
-  onStream: (callback: (data: { token: string; done: boolean; conversationId: string }) => void) => {
-    const handler = (_: unknown, data: { token: string; done: boolean; conversationId: string }) => callback(data)
+  /** Stops one in-flight generation. Resolves false if it had already finished. */
+  abortMessage: (requestId: string) => ipcRenderer.invoke(IPC.LLM_ABORT, requestId),
+  onStream: (callback: (frame: ChatStreamFrame) => void) => {
+    const handler = (_: unknown, frame: ChatStreamFrame) => callback(frame)
     ipcRenderer.on(IPC.LLM_STREAM, handler)
     return () => ipcRenderer.removeListener(IPC.LLM_STREAM, handler)
   },

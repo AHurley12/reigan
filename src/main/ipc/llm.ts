@@ -1,5 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { randomUUID } from 'crypto'
 import { IPC } from '../../shared/types'
+import type { ChatStreamEvent } from '../../shared/types'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
@@ -7,38 +9,70 @@ import { recordAppError } from '../errors/errorLog'
 
 let activeConversationId: string | null = null
 
+/**
+ * In-flight generations, so the UI can stop one. Same shape as the capability
+ * layer's map in capabilities/ipc.ts — keyed by a caller-supplied id, and always
+ * deleted in a `finally` so a throw cannot leak an entry.
+ */
+const inFlight = new Map<string, AbortController>()
+
 export function registerLLMHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC.LLM_SEND, async (_event, payload: {
     message: string
     history: Array<{ role: 'user' | 'assistant'; content: string }>
     conversationId?: string
+    requestId?: string
   }) => {
     const { message, history, conversationId } = payload
+    const requestId = payload.requestId ?? randomUUID()
 
     // Ensure we have a conversation
     if (!activeConversationId) {
       activeConversationId = conversationId ?? createConversation()
     }
+    const convId = activeConversationId
+
+    /** Every frame goes out through here, so the destroyed-window guard exists once. */
+    const emit = (event: ChatStreamEvent): void => {
+      if (mainWindow.isDestroyed()) return
+      mainWindow.webContents.send(IPC.LLM_STREAM, { requestId, conversationId: convId, event })
+    }
 
     // Save user message
-    saveMessage({ conversationId: activeConversationId, role: 'user', content: message })
+    saveMessage({ conversationId: convId, role: 'user', content: message })
 
     let fullResponse = ''
     const hasKey = !!getDecodedSetting('anthropicApiKey')
 
     if (!hasKey) {
       const placeholder = 'REIGAN is not yet connected. Add your Anthropic API key in Settings (Ctrl+,).'
-      mainWindow.webContents.send(IPC.LLM_STREAM, { token: placeholder, done: true, conversationId: activeConversationId })
-      saveMessage({ conversationId: activeConversationId, role: 'assistant', content: placeholder })
-      return { conversationId: activeConversationId }
+      emit({ kind: 'token', text: placeholder })
+      emit({ kind: 'done', reason: 'complete' })
+      saveMessage({ conversationId: convId, role: 'assistant', content: placeholder })
+      return { conversationId: convId, requestId }
     }
 
+    const controller = new AbortController()
+    inFlight.set(requestId, controller)
+
+    // Consumed unconditionally, even on a stop or a failure. Leaving the flag
+    // set would make the *next* typed reply speak out of nowhere.
+    const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
+
     try {
-      for await (const token of streamResponse(message, history)) {
-        fullResponse += token
-        mainWindow.webContents.send(IPC.LLM_STREAM, { token, done: false, conversationId: activeConversationId })
+      for await (const event of streamResponse(message, history, controller.signal)) {
+        if (event.kind === 'token') fullResponse += event.text
+        emit(event)
       }
     } catch (err) {
+      // An abort surfaces here as a thrown AbortError. It is a user action, not
+      // a fault: it must not be logged as an app error or shown as a failure.
+      if (controller.signal.aborted) {
+        persistPartial(convId, fullResponse)
+        emit({ kind: 'done', reason: 'aborted' })
+        return { conversationId: convId, requestId }
+      }
+
       console.error('[REIGAN] streamResponse failed:', err)
       // The user sees this once, inline in the transcript, and then it scrolls
       // away. A console line is not a record on a packaged build where nobody
@@ -47,17 +81,33 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
         source: 'llm',
         operation: 'streamResponse',
         error: err,
-        context: { conversationId: activeConversationId, historyLength: history.length },
+        context: { conversationId: convId, historyLength: history.length },
       })
-      const errMsg = `Error: ${err instanceof Error ? err.message : String(err)}`
-      mainWindow.webContents.send(IPC.LLM_STREAM, { token: errMsg, done: true, conversationId: activeConversationId })
-      return { conversationId: activeConversationId }
+      // Sent as a terminal reason rather than as a token. An error appended to
+      // the transcript as text is indistinguishable from model output, gets
+      // persisted as if the assistant said it, and cannot be retried.
+      persistPartial(convId, fullResponse)
+      emit({
+        kind: 'done',
+        reason: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      })
+      return { conversationId: convId, requestId }
+    } finally {
+      inFlight.delete(requestId)
     }
 
-    mainWindow.webContents.send(IPC.LLM_STREAM, { token: '', done: true, conversationId: activeConversationId })
-    saveMessage({ conversationId: activeConversationId, role: 'assistant', content: fullResponse })
+    // A stop can land between the last token and here, in which case the catch
+    // above never ran because the generator finished cleanly first.
+    if (controller.signal.aborted) {
+      persistPartial(convId, fullResponse)
+      emit({ kind: 'done', reason: 'aborted' })
+      return { conversationId: convId, requestId }
+    }
 
-    const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
+    emit({ kind: 'done', reason: 'complete' })
+    saveMessage({ conversationId: convId, role: 'assistant', content: fullResponse })
+
     const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
     const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)
 
@@ -83,7 +133,7 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
             error: err,
             severity: 'warning',
             context: {
-              conversationId: activeConversationId,
+              conversationId: convId,
               hasKey: !!elevenLabsApiKey,
               voiceId: voiceId ?? null,
               consequence: 'reply was shown but not spoken',
@@ -92,6 +142,23 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
         })
     }
 
-    return { conversationId: activeConversationId }
+    return { conversationId: convId, requestId }
   })
+
+  ipcMain.handle(IPC.LLM_ABORT, (_event, requestId: string) => {
+    const controller = inFlight.get(requestId)
+    if (!controller) return false
+    controller.abort()
+    return true
+  })
+}
+
+/**
+ * A stopped or failed generation still produced tokens the user watched arrive.
+ * Dropping them would leave the transcript and the database disagreeing the
+ * next time the conversation is opened.
+ */
+function persistPartial(conversationId: string, text: string): void {
+  if (!text) return
+  saveMessage({ conversationId, role: 'assistant', content: text })
 }

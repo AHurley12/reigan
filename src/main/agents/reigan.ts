@@ -13,7 +13,7 @@ import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
-import type { PersonalityMode } from '../../shared/types'
+import type { ChatStreamEvent, PersonalityMode } from '../../shared/types'
 
 let executor: AgentExecutor | null = null
 let executorMode: PersonalityMode | null = null
@@ -79,13 +79,23 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   return new AgentExecutor({ agent, tools, maxIterations: 5 })
 }
 
+/**
+ * Yields `ChatStreamEvent`s rather than bare strings: the caller has to be able
+ * to tell a token apart from a terminal condition, and later phases put usage
+ * and tool activity on this same generator without changing its shape again.
+ *
+ * `signal` is threaded into the runnable config so a stop reaches the model
+ * connection itself, not just this loop — otherwise the request keeps running
+ * and keeps being billed after the user has stopped watching.
+ */
 export async function* streamResponse(
   input: string,
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
-): AsyncGenerator<string> {
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  signal?: AbortSignal
+): AsyncGenerator<ChatStreamEvent> {
   const apiKey = getApiKey()
   if (!apiKey) {
-    yield 'No API key configured. Please add your Anthropic API key in Settings (Ctrl+,).'
+    yield { kind: 'token', text: 'No API key configured. Please add your Anthropic API key in Settings (Ctrl+,).' }
     return
   }
 
@@ -104,7 +114,7 @@ export async function* streamResponse(
   // matches. streamEvents v2 gives per-token deltas from the underlying chat model instead.
   const eventStream = executor.streamEvents(
     { input, chat_history: chatHistory },
-    { version: 'v2' }
+    { version: 'v2', signal }
   )
 
   let yieldedAny = false
@@ -116,20 +126,23 @@ export async function* streamResponse(
     if (typeof content === 'string') {
       if (content) {
         yieldedAny = true
-        yield content
+        yield { kind: 'token', text: content }
       }
     } else if (Array.isArray(content)) {
       for (const block of content) {
         if (block?.type === 'text' && typeof block.text === 'string' && block.text) {
           yieldedAny = true
-          yield block.text
+          yield { kind: 'token', text: block.text }
         }
       }
     }
   }
 
-  if (!yieldedAny) {
-    yield "I didn't have a response for that — try rephrasing."
+  // A stop is not an empty answer. Without this check the "try rephrasing" line
+  // would be appended to whatever the user had already stopped, which reads as
+  // the assistant talking back after being interrupted.
+  if (!yieldedAny && !signal?.aborted) {
+    yield { kind: 'token', text: "I didn't have a response for that — try rephrasing." }
   }
 }
 

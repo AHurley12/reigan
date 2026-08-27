@@ -2,8 +2,9 @@ declare global {
   interface Window {
     reigan: {
       initialThemeId: string
-      sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) => Promise<{ conversationId: string }>
-      onStream: (callback: (data: { token: string; done: boolean; conversationId: string }) => void) => () => void
+      sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string }) => Promise<{ conversationId: string; requestId: string }>
+      abortMessage: (requestId: string) => Promise<boolean>
+      onStream: (callback: (frame: import('../../../shared/types').ChatStreamFrame) => void) => () => void
       createTask: (params: object) => Promise<any>
       listTasks: (params?: object) => Promise<any[]>
       updateTask: (id: string, updates: object) => Promise<any>

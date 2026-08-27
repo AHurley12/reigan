@@ -22,6 +22,36 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   isStreaming?: boolean;
+  /** Set when the user stopped this reply mid-stream. The partial text is kept. */
+  stoppedByUser?: boolean;
+  /** Set when the turn failed. Rendered as an error block, never as model output. */
+  error?: string;
+}
+
+export type ChatDoneReason = 'complete' | 'aborted' | 'error';
+
+/**
+ * One event on the `llm:stream` channel.
+ *
+ * A discriminated union rather than the old `{ token, done }` pair. A stopped
+ * generation has to be distinguishable from a finished one — the old shape
+ * could not say which — and token usage and tool activity have to ride the same
+ * channel later without re-plumbing preload and the renderer each time. New
+ * kinds are additive; a renderer that does not know a kind ignores it.
+ */
+export type ChatStreamEvent =
+  | { kind: 'token'; text: string }
+  | { kind: 'done'; reason: ChatDoneReason; message?: string };
+
+export interface ChatStreamFrame {
+  /**
+   * Identifies the send this event belongs to. The renderer drops frames from a
+   * superseded request, so a stop followed immediately by a resend cannot have
+   * the old stream's tail land in the new message.
+   */
+  requestId: string;
+  conversationId: string;
+  event: ChatStreamEvent;
 }
 
 export interface Conversation {

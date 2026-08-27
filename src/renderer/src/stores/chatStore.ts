@@ -1,22 +1,20 @@
 import { create } from 'zustand'
-import type { ChatMessage } from '../../../shared/types'
+import type { ChatMessage, ChatStreamFrame } from '../../../shared/types'
 import { useAppStore } from './appStore'
+import { reduceStreamFrame, type StreamState } from './streamReducer'
 
-interface ChatStore {
-  messages: ChatMessage[]
-  isStreaming: boolean
+interface ChatStore extends StreamState {
   conversationId: string | null
-  streamingId: string | null
   addUserMessage: (content: string) => ChatMessage
-  startStreaming: () => string
-  appendToken: (id: string, token: string) => void
-  finalizeMessage: (id: string) => void
+  startStreaming: (requestId: string) => string
   setConversationId: (id: string) => void
   clearMessages: () => void
   /** Sends a message as if typed — shared by the chat input and voice transcripts. */
   sendMessage: (text: string) => Promise<void>
-  /** Routes a raw IPC stream event to the in-flight assistant message. */
-  handleStreamEvent: (data: { token: string; done: boolean; conversationId: string }) => void
+  /** Stops the in-flight generation. The partial reply is kept. */
+  abort: () => Promise<void>
+  /** Routes a raw IPC stream frame to the in-flight assistant message. */
+  handleStreamFrame: (frame: ChatStreamFrame) => void
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -24,6 +22,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   conversationId: null,
   streamingId: null,
+  requestId: null,
 
   addUserMessage: (content) => {
     const msg: ChatMessage = {
@@ -36,7 +35,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return msg
   },
 
-  startStreaming: () => {
+  startStreaming: (requestId) => {
     const id = crypto.randomUUID()
     const msg: ChatMessage = {
       id,
@@ -45,30 +44,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       timestamp: Date.now(),
       isStreaming: true,
     }
-    set((s) => ({ messages: [...s.messages, msg], isStreaming: true, streamingId: id }))
+    set((s) => ({ messages: [...s.messages, msg], isStreaming: true, streamingId: id, requestId }))
     return id
   },
 
-  appendToken: (id, token) => {
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === id ? { ...m, content: m.content + token } : m
-      ),
-    }))
-  },
-
-  finalizeMessage: (id) => {
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.id === id ? { ...m, isStreaming: false } : m
-      ),
-      isStreaming: false,
-      streamingId: s.streamingId === id ? null : s.streamingId,
-    }))
-  },
-
   setConversationId: (id) => set({ conversationId: id }),
-  clearMessages: () => set({ messages: [], conversationId: null }),
+
+  clearMessages: () =>
+    set({ messages: [], conversationId: null, streamingId: null, requestId: null, isStreaming: false }),
 
   sendMessage: async (text) => {
     const ipc = window.reigan
@@ -81,30 +64,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const history = get().messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
     get().addUserMessage(text)
-    const msgId = get().startStreaming()
+    // Generated here rather than in main so the store can start dropping frames
+    // from a previous request the instant this one begins.
+    const requestId = crypto.randomUUID()
+    get().startStreaming(requestId)
     useAppStore.getState().setReiganState('processing')
 
     try {
-      await ipc.sendMessage({ message: text, history, conversationId: get().conversationId ?? undefined })
+      await ipc.sendMessage({ message: text, history, conversationId: get().conversationId ?? undefined, requestId })
     } catch (err) {
-      get().appendToken(msgId, `\n\n*Error: ${err}*`)
-      get().finalizeMessage(msgId)
-      useAppStore.getState().setReiganState('error')
+      // The bridge itself failed, so no `done` frame is coming. Terminate the
+      // message here or its cursor blinks forever.
+      get().handleStreamFrame({
+        requestId,
+        conversationId: get().conversationId ?? '',
+        event: { kind: 'done', reason: 'error', message: err instanceof Error ? err.message : String(err) },
+      })
     }
   },
 
-  handleStreamEvent: (data) => {
-    const id = get().streamingId
-    if (!id) return
+  abort: async () => {
+    const requestId = get().requestId
+    if (!requestId) return
+    await window.reigan?.abortMessage?.(requestId)
+    // No optimistic finalize here: main answers the abort with a `done` frame
+    // carrying reason 'aborted', and that is what closes the message out. Doing
+    // it twice would race the partial-save.
+  },
 
-    if (data.done) {
-      get().finalizeMessage(id)
-      if (useAppStore.getState().reiganState === 'processing') {
-        useAppStore.getState().setReiganState('idle')
+  handleStreamFrame: (frame) => {
+    const before = get()
+    const after = reduceStreamFrame(before, frame)
+    if (after === before) return
+    set(after)
+
+    if (frame.event.kind === 'done') {
+      if (frame.conversationId) get().setConversationId(frame.conversationId)
+      const app = useAppStore.getState()
+      if (frame.event.reason === 'error') {
+        app.setReiganState('error')
+      } else if (app.reiganState === 'processing') {
+        // Only when still processing: a voice reply has already moved to
+        // 'speaking' by now and must not be knocked back to idle.
+        app.setReiganState('idle')
       }
-      if (data.conversationId) get().setConversationId(data.conversationId)
-    } else {
-      get().appendToken(id, data.token)
     }
   },
 }))

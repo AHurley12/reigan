@@ -1,6 +1,7 @@
 import React, { useRef, KeyboardEvent } from 'react'
 import { Send, Mic, Square, Flame, CircleStop } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVoiceControls } from '../../hooks/useVoice'
 
@@ -15,11 +16,22 @@ export function InputBar({ onSend, inputRef }: Props) {
   const { reiganState, setSettingsOpen } = useAppStore()
   const isUnbridled = useSettingsStore((s) => s.settings.personalityMode === 'unbridled')
   const { isActive: isVoiceActive, startVoice, stopVoice, skipVoiceResponse } = useVoiceControls()
+  const isStreaming = useChatStore((s) => s.isStreaming)
+  const abort = useChatStore((s) => s.abort)
   const isSpeaking = reiganState === 'speaking'
-  const isDisabled = reiganState === 'processing'
+  // Voice capture is the one control that genuinely cannot overlap a
+  // generation. The composer itself stays live, so the next message can be
+  // drafted while this one is still answering.
+  const micDisabled = reiganState === 'processing'
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Enter sends and Shift+Enter newlines — the chat convention, and the
+    // muscle memory this app already had. Ctrl/Cmd+Enter is accepted as an
+    // alias for people arriving from editors that bind submit that way.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      submit()
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       submit()
     }
@@ -27,7 +39,7 @@ export function InputBar({ onSend, inputRef }: Props) {
 
   const submit = () => {
     const val = ref.current?.value.trim()
-    if (val && !isDisabled) {
+    if (val && !isStreaming) {
       onSend(val)
       if (ref.current) ref.current.value = ''
     }
@@ -45,9 +57,8 @@ export function InputBar({ onSend, inputRef }: Props) {
         <textarea
           ref={ref}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Shingan anything... (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask Shingan anything… (Enter to send, Shift+Enter for newline)"
           rows={1}
-          disabled={isDisabled}
           className="ornate ornate-focus w-full resize-none bg-elevated px-3 py-2 text-sm
             placeholder:text-txt-muted text-txt-primary
             focus:outline-none transition-colors duration-fast
@@ -95,7 +106,7 @@ export function InputBar({ onSend, inputRef }: Props) {
       <div className="relative group">
         <button
           onClick={() => (isVoiceActive ? stopVoice() : startVoice())}
-          disabled={isDisabled}
+          disabled={micDisabled}
           className="w-9 h-9 rounded-md flex items-center justify-center
             transition-all duration-fast disabled:opacity-30 disabled:cursor-not-allowed"
           style={{
@@ -113,20 +124,42 @@ export function InputBar({ onSend, inputRef }: Props) {
         </div>
       </div>
 
-      {/* Send button */}
-      <button
-        onClick={submit}
-        disabled={isDisabled}
-        className="w-9 h-9 rounded-md flex items-center justify-center
-          transition-all duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          background: 'var(--reigan-gradient)',
-          color: 'var(--text-on-accent)',
-        }}
-        aria-label="Send"
-      >
-        <Send size={15} />
-      </button>
+      {/* Send, or Stop while a reply is streaming. One slot, so the control the
+          user reaches for does not move the moment generation starts. */}
+      {isStreaming ? (
+        <div className="relative group">
+          <button
+            onClick={() => void abort()}
+            className="w-9 h-9 rounded-md flex items-center justify-center transition-all duration-fast"
+            style={{
+              background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-hover)',
+            }}
+            aria-label="Stop generating"
+          >
+            <Square size={13} />
+          </button>
+          <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block
+            px-2 py-1 rounded text-[11px] whitespace-nowrap pointer-events-none"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+            Stop generating (Esc)
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={submit}
+          className="w-9 h-9 rounded-md flex items-center justify-center
+            transition-all duration-fast disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: 'var(--reigan-gradient)',
+            color: 'var(--text-on-accent)',
+          }}
+          aria-label="Send"
+        >
+          <Send size={15} />
+        </button>
+      )}
     </div>
   )
 }
