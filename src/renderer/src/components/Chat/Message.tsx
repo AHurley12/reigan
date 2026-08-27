@@ -1,6 +1,8 @@
 import React, { useState, KeyboardEvent } from 'react'
+import { RotateCcw } from 'lucide-react'
 import { StreamingText } from './StreamingText'
 import { MessageActions } from './MessageActions'
+import { MessageError } from './MessageError'
 import { useChatStore } from '../../stores/chatStore'
 import type { ChatMessage } from '../../../../shared/types'
 
@@ -90,9 +92,27 @@ export function Message({ message }: Props) {
       <div className="pl-1">
         <StreamingText content={message.content} isStreaming={message.isStreaming} />
       </div>
+
+      {message.error && (
+        <MessageError error={message.error} onRetry={() => void resendFrom(message.id)} />
+      )}
+
+      {/* A stopped reply gets the same recovery route as a failed one — the
+          user interrupted it, so continuing is a normal thing to want. */}
+      {message.stoppedByUser && !message.error && (
+        <button
+          onClick={() => void resendFrom(message.id)}
+          className="self-start mt-2 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm transition-colors"
+          style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+        >
+          <RotateCcw size={11} />
+          Try again
+        </button>
+      )}
+
       {/* Actions only once the reply has settled: copying or regenerating a
           half-arrived answer produces something the user did not mean. */}
-      {!message.isStreaming && (
+      {!message.isStreaming && !message.error && (
         <MessageActions content={message.content} onRegenerate={() => void resendFrom(message.id)} />
       )}
     </div>

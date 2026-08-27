@@ -11,6 +11,7 @@ const SCROLL_THROTTLE_MS = 100
 export function ChatPanel() {
   const messages = useChatStore((s) => s.messages)
   const sendMessage = useChatStore((s) => s.sendMessage)
+  const isStreaming = useChatStore((s) => s.isStreaming)
   const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
@@ -43,8 +44,16 @@ export function ChatPanel() {
           content, not zero. */}
       <div className="flex flex-col flex-1 min-w-0">
       {/* Message list */}
+      {/* The transcript had no landmark at all, so assistive tech saw an
+          undifferentiated stack of divs. `role="log"` makes it navigable.
+          The live announcement is deliberately NOT on this container: tokens
+          arrive dozens of times a second, and an aria-live region here would
+          re-announce the growing reply continuously. The status line below
+          carries the announcement instead. */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-label="Conversation"
         className="chat-surface flex-1 overflow-y-auto px-6 py-6"
         style={{ backgroundColor: 'transparent' }}
       >
@@ -77,6 +86,12 @@ export function ChatPanel() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* One short, polite announcement per state change, rather than a live
+          region over the streaming text itself. */}
+      <div className="sr-only" role="status" aria-live="polite">
+        {isStreaming ? 'Shingan is replying.' : ''}
       </div>
 
       {/* Input bar */}
