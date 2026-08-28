@@ -52,6 +52,12 @@ export function GeneralSettings() {
       </div>
 
       <div>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Tavily API Key</p>
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Enables web search, page reading, and site crawling. Optional — Shingan works without it, but cannot reach the web. Stored locally.</p>
+        <ApiKeyField settingKey="tavilyApiKey" placeholder="tvly-..." />
+      </div>
+
+      <div>
         <SettingRow
           label="Model"
           labelJa="モデル"
