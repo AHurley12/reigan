@@ -123,6 +123,18 @@ export function ConnectionsSettings() {
       )}
       {error && <p className="text-[11px]" style={{ color: 'var(--critical)' }}>{error}</p>}
 
+      <div>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Tavily</p>
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+          Gives Shingan the web: search, reading a page, and crawling a site. Without a key those
+          tools report that they are not connected, and the rest of the app is unaffected. A free
+          key from{' '}
+          <span style={{ color: 'var(--text-secondary)' }}>app.tavily.com</span> covers roughly a
+          thousand searches a month. Encrypted at rest, like every other credential here.
+        </p>
+        <ApiKeyField settingKey="tavilyApiKey" placeholder="tvly-..." />
+      </div>
+
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
         More integrations (future): each gets its own card here — add one entry to the registry, done.
       </p>
