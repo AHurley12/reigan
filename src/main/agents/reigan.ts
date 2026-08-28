@@ -14,7 +14,7 @@ import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
 import { getDecodedSetting } from '../db/queries'
 import { classify } from '../../shared/attachmentPolicy'
-import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET, resolveModel, resolveSampling } from '../../shared/models'
+import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET, resolveModel, resolveRequestConfig } from '../../shared/models'
 import { serialiseArgs } from '../capabilities/audit'
 import type { ChatAttachmentInput, ChatStreamEvent, PersonalityMode } from '../../shared/types'
 
@@ -139,22 +139,29 @@ function getTools(): DynamicStructuredTool[] {
 
 function buildExecutor(apiKey: string, config: AgentConfig): AgentExecutor {
   const model = resolveModel(config.model)
-  // The three rules that keep the request valid — temperature and top_p never
-  // both set, the allowlist workaround for the default path, and thinking
-  // fixing sampling — live in resolveSampling, which is tested. See
-  // shared/models.ts.
-  const sampling = resolveSampling({
+  // Every per-model request rule — which thinking mode the model accepts,
+  // whether it accepts sampling parameters at all, and the allowlist workaround
+  // for the default path — lives in resolveRequestConfig, which is tested.
+  // See shared/models.ts.
+  const requestConfig = resolveRequestConfig({
+    model: model.id,
     temperature: config.temperature,
     thinkingEnabled: config.thinkingEnabled,
     thinkingBudget: config.thinkingBudget,
-    modelSupportsThinking: model.supportsThinking,
   })
 
   const llm = new ChatAnthropic({
     apiKey,
     model: model.id,
     streaming: true,
-    ...sampling,
+    ...requestConfig,
+    // @langchain/anthropic 0.3.34's ThinkingConfigParam predates adaptive
+    // thinking and only types 'enabled' | 'disabled'. The library does not
+    // inspect any other value — it passes the object straight through to the
+    // API — so this cast is the types lagging the service, not a wrong request.
+    // Passing `undefined` here is identical to omitting the field: the library
+    // falls back to its own default.
+    thinking: requestConfig.thinking as never,
   })
 
   const tools = getTools()

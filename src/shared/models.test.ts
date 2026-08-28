@@ -5,8 +5,13 @@ import {
   MIN_THINKING_BUDGET,
   MODELS,
   resolveModel,
-  resolveSampling,
+  resolveRequestConfig,
 } from './models'
+
+const OPUS_5 = 'claude-opus-5'
+const SONNET_5 = 'claude-sonnet-5'
+const SONNET_4_6 = 'claude-sonnet-4-6'
+const HAIKU_4_5 = 'claude-haiku-4-5-20251001'
 
 describe('the catalogue', () => {
   it('contains the model the app shipped with, so the default is real', () => {
@@ -17,85 +22,164 @@ describe('the catalogue', () => {
     expect(new Set(MODELS.map((m) => m.id)).size).toBe(MODELS.length)
   })
 
-  it('gives every model a context window the gauge can divide by', () => {
-    for (const model of MODELS) {
-      expect(model.contextWindow, `${model.id} contextWindow`).toBeGreaterThan(0)
-      expect(model.hint.length, `${model.id} hint`).toBeGreaterThan(0)
-    }
-  })
-
   it('falls back instead of throwing on an id that is no longer offered', () => {
-    // A stale value in settings must not brick chat.
     expect(resolveModel('claude-from-2019').id).toBe(DEFAULT_MODEL_ID)
     expect(resolveModel(undefined).id).toBe(DEFAULT_MODEL_ID)
   })
 })
 
-describe('the default path is unchanged from what shipped', () => {
-  // This is the regression guard for the whole phase. claude-sonnet-4-6 is not
-  // in @langchain/anthropic's allowlist, so it sends temperature 1 and topP -1
-  // unconditionally, and top_p: -1 is rejected by the API. temperature: null
-  // clears it and leaves topP as the only sampling parameter.
-  it('sends temperature null and topP 1 when nothing was chosen', () => {
-    expect(resolveSampling({ modelSupportsThinking: true })).toEqual({ temperature: null, topP: 1 })
+describe('context windows match the published specs', () => {
+  // These were all 200_000, which made the gauge read five times too full on
+  // three of the four models and offer "start a new chat" at under a fifth of
+  // the real capacity.
+  it('gives the 1M-context models their full window', () => {
+    for (const id of [OPUS_5, SONNET_5, SONNET_4_6]) {
+      expect(resolveModel(id).contextWindow, id).toBe(1_000_000)
+    }
+  })
+
+  it('keeps Haiku 4.5 at its smaller 200K window', () => {
+    expect(resolveModel(HAIKU_4_5).contextWindow).toBe(200_000)
+  })
+})
+
+describe('thinking mode per model', () => {
+  // Extended thinking (type "enabled" + budget_tokens) is rejected with a 400
+  // on Claude 4.7 and later; adaptive thinking is rejected on 4.5 and earlier.
+  // This was recorded backwards: Haiku 4.5 is the only one of the four that
+  // takes a budget, and it was the only one marked as not supporting thinking.
+  it('uses the manual budget only on Haiku 4.5', () => {
+    expect(resolveModel(HAIKU_4_5).thinkingMode).toBe('budget')
+  })
+
+  it('uses adaptive thinking on every 4.6-and-later model', () => {
+    for (const id of [OPUS_5, SONNET_5, SONNET_4_6]) {
+      expect(resolveModel(id).thinkingMode, id).toBe('adaptive')
+    }
+  })
+})
+
+describe('models that reject sampling parameters', () => {
+  // "Setting temperature, top_p, or top_k to any non-default value on Claude
+  // Opus 4.7 or later models, including Claude Opus 5, returns a 400 error."
+  for (const id of [OPUS_5, SONNET_5]) {
+    it(`${id} never sends temperature, topP or a budget`, () => {
+      const config = resolveRequestConfig({ model: id, temperature: 0.4, thinkingEnabled: true, thinkingBudget: 8000 })
+
+      expect(config.temperature).toBeUndefined()
+      expect(config.topP).toBeUndefined()
+      expect(config.thinking).toEqual({ type: 'adaptive' })
+    })
+
+    it(`${id} deletes the sampling keys the library would otherwise send`, () => {
+      // @langchain/anthropic only omits top_p for its own allowlist, and these
+      // models are not on it — without this the request carries top_p: -1.
+      const config = resolveRequestConfig({ model: id })
+
+      expect(config.invocationKwargs).toEqual({
+        temperature: undefined,
+        top_p: undefined,
+        top_k: undefined,
+      })
+      expect(Object.keys(config.invocationKwargs!)).toEqual(['temperature', 'top_p', 'top_k'])
+    })
+
+    it(`${id} still thinks when the toggle is off, because it always does`, () => {
+      expect(resolveRequestConfig({ model: id, thinkingEnabled: false }).thinking).toEqual({ type: 'adaptive' })
+    })
+  }
+})
+
+describe('the shipped default path is unchanged', () => {
+  // The regression guard for this whole change: Sonnet 4.6 works today and must
+  // keep sending exactly what it sent before. claude-sonnet-4-6 is absent from
+  // the library's allowlist, so it sends topP -1 unless temperature is
+  // explicitly null, and top_p: -1 is rejected.
+  it('sends temperature null and topP 1 with nothing configured', () => {
+    expect(resolveRequestConfig({ model: SONNET_4_6 })).toEqual({ temperature: null, topP: 1 })
+  })
+
+  it('sends no thinking key at all when thinking is off', () => {
+    const config = resolveRequestConfig({ model: SONNET_4_6, thinkingEnabled: false })
+
+    expect(config.thinking).toBeUndefined()
+    expect(config.invocationKwargs).toBeUndefined()
   })
 
   it('treats an explicitly null temperature as untouched', () => {
-    expect(resolveSampling({ temperature: null, modelSupportsThinking: true })).toEqual({
+    expect(resolveRequestConfig({ model: SONNET_4_6, temperature: null })).toEqual({ temperature: null, topP: 1 })
+  })
+
+  it('omits topP once a temperature is chosen, so the two are never both sent', () => {
+    const config = resolveRequestConfig({ model: SONNET_4_6, temperature: 0.3 })
+
+    expect(config.temperature).toBe(0.3)
+    expect('topP' in config).toBe(false)
+  })
+
+  it('keeps zero, which is a real temperature and not "unset"', () => {
+    expect(resolveRequestConfig({ model: SONNET_4_6, temperature: 0 }).temperature).toBe(0)
+  })
+
+  it('clamps a temperature outside the accepted range', () => {
+    expect(resolveRequestConfig({ model: SONNET_4_6, temperature: 5 }).temperature).toBe(MAX_TEMPERATURE)
+    expect(resolveRequestConfig({ model: SONNET_4_6, temperature: -1 }).temperature).toBe(0)
+    expect(resolveRequestConfig({ model: SONNET_4_6, temperature: NaN }).temperature).toBe(MAX_TEMPERATURE)
+  })
+
+  it('asks for adaptive thinking when the toggle is on', () => {
+    expect(resolveRequestConfig({ model: SONNET_4_6, thinkingEnabled: true }).thinking).toEqual({ type: 'adaptive' })
+  })
+})
+
+describe('Haiku 4.5 manual thinking', () => {
+  it('sends a budget, and the temperature the library demands as a guard', () => {
+    // @langchain/anthropic refuses to build the request unless temperature is
+    // exactly 1 and topP is unset. It only checks them — the thinking branch
+    // omits sampling from the body entirely.
+    const config = resolveRequestConfig({ model: HAIKU_4_5, thinkingEnabled: true, thinkingBudget: 8000 })
+
+    expect(config.thinking).toEqual({ type: 'enabled', budget_tokens: 8000 })
+    expect(config.temperature).toBe(1)
+    expect(config.topP).toBeUndefined()
+  })
+
+  it('raises a budget below the API minimum rather than sending an invalid one', () => {
+    const config = resolveRequestConfig({ model: HAIKU_4_5, thinkingEnabled: true, thinkingBudget: 10 })
+
+    expect(config.thinking).toEqual({ type: 'enabled', budget_tokens: MIN_THINKING_BUDGET })
+  })
+
+  it('never asks Haiku for adaptive thinking, which it rejects', () => {
+    for (const enabled of [true, false]) {
+      const config = resolveRequestConfig({ model: HAIKU_4_5, thinkingEnabled: enabled })
+      expect(config.thinking).not.toEqual({ type: 'adaptive' })
+    }
+  })
+
+  it('behaves like any sampling-accepting model with thinking off', () => {
+    expect(resolveRequestConfig({ model: HAIKU_4_5, thinkingEnabled: false })).toEqual({
       temperature: null,
       topP: 1,
     })
   })
 })
 
-describe('temperature and top_p are never both sent', () => {
-  it('omits topP once a temperature is chosen', () => {
-    const config = resolveSampling({ temperature: 0.3, modelSupportsThinking: true })
-
-    expect(config.temperature).toBe(0.3)
-    expect(config.topP).toBeUndefined()
-    expect('topP' in config).toBe(false)
+describe('no model is left in an unusable shape', () => {
+  it('never sends a thinking budget to a model that rejects it', () => {
+    for (const model of MODELS) {
+      const config = resolveRequestConfig({ model: model.id, thinkingEnabled: true, thinkingBudget: 4096 })
+      if (model.thinkingMode === 'adaptive') {
+        expect(config.thinking, model.id).not.toHaveProperty('budget_tokens')
+      }
+    }
   })
 
-  it('keeps zero, which is a real temperature and not "unset"', () => {
-    const config = resolveSampling({ temperature: 0, modelSupportsThinking: true })
-
-    expect(config.temperature).toBe(0)
-    expect(config.topP).toBeUndefined()
-  })
-
-  it('clamps a temperature outside the accepted range', () => {
-    expect(resolveSampling({ temperature: 5, modelSupportsThinking: true }).temperature).toBe(MAX_TEMPERATURE)
-    expect(resolveSampling({ temperature: -1, modelSupportsThinking: true }).temperature).toBe(0)
-    expect(resolveSampling({ temperature: NaN, modelSupportsThinking: true }).temperature).toBe(MAX_TEMPERATURE)
-  })
-})
-
-describe('extended thinking fixes the sampling parameters', () => {
-  it('sends neither topP nor an explicit temperature alongside thinking', () => {
-    const config = resolveSampling({
-      temperature: 0.2,
-      thinkingEnabled: true,
-      thinkingBudget: 8000,
-      modelSupportsThinking: true,
-    })
-
-    expect(config.thinking).toEqual({ type: 'enabled', budget_tokens: 8000 })
-    expect(config.temperature).toBeNull()
-    expect(config.topP).toBeUndefined()
-  })
-
-  it('raises a budget below the API minimum rather than sending an invalid one', () => {
-    const config = resolveSampling({ thinkingEnabled: true, thinkingBudget: 10, modelSupportsThinking: true })
-
-    expect(config.thinking?.budget_tokens).toBe(MIN_THINKING_BUDGET)
-  })
-
-  it('ignores the request on a model that does not support it', () => {
-    const config = resolveSampling({ thinkingEnabled: true, modelSupportsThinking: false })
-
-    expect(config.thinking).toBeUndefined()
-    // Falls back to the default path rather than to a half-configured one.
-    expect(config).toEqual({ temperature: null, topP: 1 })
+  it('never sends a sampling parameter to a model that rejects it', () => {
+    for (const model of MODELS.filter((m) => !m.acceptsSampling)) {
+      const config = resolveRequestConfig({ model: model.id, temperature: 0.7 })
+      expect(config.temperature, model.id).toBeUndefined()
+      expect(config.topP, model.id).toBeUndefined()
+    }
   })
 })

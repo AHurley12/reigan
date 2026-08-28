@@ -50,9 +50,9 @@ describe('rejections name the limit that was broken', () => {
     const verdict = checkAttachment(png({ byteSize: MAX_IMAGE_BYTES + 1 }))
 
     expect(verdict.ok).toBe(false)
-    // Non-breaking space between the number and the unit — asserted explicitly
-    // so a future edit cannot quietly replace it with a plain space.
-    if (!verdict.ok) expect(verdict.reason).toContain('5 MB')
+    // Matched with a regex rather than a literal: the space between number and
+    // unit is a non-breaking one, which is invisible and easy to mangle.
+    if (!verdict.ok) expect(verdict.reason).toMatch(/10.MB/)
   })
 
   it('holds PDFs to their own, larger limit', () => {

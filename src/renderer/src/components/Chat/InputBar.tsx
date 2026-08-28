@@ -23,7 +23,13 @@ export function InputBar({ onSend, inputRef }: Props) {
   const { attachments, add, remove, clear } = useAttachments()
   const [dragging, setDragging] = useState(false)
   const activeModel = resolveModel(useSettingsStore((s) => s.settings.model))
-  const thinkingOn = useSettingsStore((s) => s.settings.thinkingEnabled) && activeModel.supportsThinking
+  // Read unconditionally: putting the hook on the right of a || would skip
+  // the call whenever the left side is true, which is a hooks violation.
+  const thinkingEnabled = useSettingsStore((s) => s.settings.thinkingEnabled)
+  // Opus 5 and Sonnet 5 think on every turn whatever the toggle says, so the
+  // indicator reflects what will actually happen, not what was configured.
+  const alwaysThinks = !activeModel.acceptsSampling && activeModel.thinkingMode === 'adaptive'
+  const thinkingOn = alwaysThinks || thinkingEnabled
   const { reiganState, setSettingsOpen } = useAppStore()
   const isUnbridled = useSettingsStore((s) => s.settings.personalityMode === 'unbridled')
   const { isActive: isVoiceActive, startVoice, stopVoice, skipVoiceResponse } = useVoiceControls()

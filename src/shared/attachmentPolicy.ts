@@ -16,7 +16,13 @@ export const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'ima
 /** Document formats accepted as `document` blocks. */
 export const ALLOWED_DOCUMENT_TYPES = ['application/pdf'] as const
 
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+/**
+ * 10 MB is the per-image limit on the Claude API directly. 5 MB is the Amazon
+ * Bedrock and Google Cloud figure, which is what this constant used to hold —
+ * wrong for the only platform Reigan talks to, and it refused images the API
+ * would have accepted.
+ */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const MAX_PDF_BYTES = 32 * 1024 * 1024
 
 /**
