@@ -29,13 +29,23 @@ export function toolNameToCapabilityId(name: string): string {
 }
 
 function buildTool(cap: AnyCapability): DynamicStructuredTool {
-  const needsApproval = cap.risk === 'write' || cap.risk === 'destructive'
+  const mutates = cap.risk === 'write' || cap.risk === 'destructive'
 
   // Told to the model, so it can set expectations before calling rather than
   // being surprised by a denial or a pending approval it doesn't understand.
-  const description = needsApproval
-    ? `${cap.description}\n\nThis action modifies data and requires the user's approval before it runs.`
-    : cap.description
+  // The two cases are worded apart on purpose: telling the model that a web
+  // search "modifies data" would be false, and it repeats such claims to the
+  // user verbatim.
+  let description = cap.description
+  if (mutates) {
+    description += "\n\nThis action modifies data and requires the user's approval before it runs."
+  } else if (cap.approvalPolicy === 'always') {
+    description += "\n\nThis action requires the user's approval every time it runs."
+  } else if (cap.approvalPolicy === 'session') {
+    description +=
+      "\n\nThe first use in a conversation asks the user's approval; once they approve, " +
+      'later uses in that same conversation run without asking again.'
+  }
 
   return new DynamicStructuredTool({
     name: capabilityIdToToolName(cap.id),

@@ -40,11 +40,18 @@ async function loadRegistry() {
 }
 
 describe('capability registration', () => {
+  // The only test here that pays for the import graph: `loadRegistry` pulls in
+  // every capability module, and through them most of the app — googleapis,
+  // langchain, and now @tavily/core and axios. The other six hit the module
+  // cache and finish in tens of milliseconds. Measured at 4.8s against the 5s
+  // default once the web capabilities landed, which is a margin thin enough to
+  // fail on a cold cache or a loaded machine, and did. Raised rather than made
+  // global, so a genuinely hung test elsewhere still fails fast.
   it('registers every capability without a collision or a rule violation', async () => {
     const { listCapabilities } = await loadRegistry()
     const all = listCapabilities()
     expect(all.length).toBeGreaterThan(20)
-  })
+  }, 30_000)
 
   it('registers each Dev Tools family', async () => {
     const { listCapabilities } = await loadRegistry()
