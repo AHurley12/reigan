@@ -12,11 +12,10 @@ import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTo
 import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
 import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { googleAuth } from '../auth/googleAuth'
-import { getDecodedSetting } from '../db/queries'
+import { getDecodedSetting, getAllDecodedSettings } from '../db/queries'
+import { settingsPromptBlock } from '../../shared/settings/describe'
+import { getCachedExecutor, setCachedExecutor } from './executorCache'
 import type { PersonalityMode } from '../../shared/types'
-
-let executor: AgentExecutor | null = null
-let executorMode: PersonalityMode | null = null
 
 function getApiKey(): string {
   return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
@@ -59,7 +58,26 @@ function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
   })
 
   const tools = getTools()
-  const systemPrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+  const basePrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+
+  // Settings live in the prompt rather than behind get_settings alone: a tool
+  // the model has to remember to call is one it will sometimes skip, and then
+  // it answers about its own configuration from imagination. This block is
+  // rebuilt whenever a setting changes (resetExecutor).
+  //
+  // settingsPromptBlock escapes braces for the f-string template; see its note.
+  const settingsBlock = settingsPromptBlock(getAllDecodedSettings())
+
+  const systemPrompt = `${basePrompt}
+
+## Your current settings
+
+These are live values read from the database, not examples. Answer questions
+about your own configuration from this list rather than guessing, and do not
+tell the user a setting is off when it is shown here as on. Change one with
+update_setting; anything marked [default] has never been explicitly set.
+
+${settingsBlock}`
 
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
@@ -83,9 +101,10 @@ export async function* streamResponse(
   }
 
   const mode = getPersonalityMode()
-  if (!executor || executorMode !== mode) {
+  let executor = getCachedExecutor(mode)
+  if (!executor) {
     executor = buildExecutor(apiKey, mode)
-    executorMode = mode
+    setCachedExecutor(mode, executor)
   }
 
   const chatHistory = history.flatMap(m =>
@@ -126,7 +145,6 @@ export async function* streamResponse(
   }
 }
 
-export function resetExecutor(): void {
-  executor = null
-  executorMode = null
-}
+// Re-exported so existing callers (ipc/system.ts) keep their import path while
+// the cache itself lives in a module the tools can reach without a cycle.
+export { resetExecutor } from './executorCache'

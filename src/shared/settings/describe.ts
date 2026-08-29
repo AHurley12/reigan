@@ -12,6 +12,21 @@ import { SETTING_DESCRIPTORS, displayValue, type SettingKey } from './descriptor
  * Secrets are reduced to (set)/(not set) here rather than at each call site, so
  * no caller can forget. Values are never echoed.
  */
+/**
+ * The settings block as it goes into the agent's system prompt.
+ *
+ * `ChatPromptTemplate` parses f-string placeholders, so a brace inside a stored
+ * value — a custom avatar label like `my {weird} name`, say — would be read as
+ * a template variable and throw at construction, taking the whole agent down.
+ * Doubling braces is how f-string escapes a literal one.
+ *
+ * Kept here beside `describeSettings` rather than inline at the call site so it
+ * can be tested without standing up an executor.
+ */
+export function settingsPromptBlock(stored: Record<string, unknown>): string {
+  return describeSettings(stored).replace(/\{/g, '{{').replace(/\}/g, '}}')
+}
+
 export function describeSettings(stored: Record<string, unknown>): string {
   const keys = Object.keys(SETTING_DESCRIPTORS) as SettingKey[]
   return keys

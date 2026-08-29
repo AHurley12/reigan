@@ -4,6 +4,9 @@ import { getAllDecodedSettings, setSetting, getDecodedSetting, InvalidSettingErr
 import { describeSettings } from '../../../shared/settings/describe'
 import { AGENT_EDITABLE_KEYS, descriptorFor } from '../../../shared/settings/descriptors'
 import { withPermission } from './permission'
+// From executorCache, not reigan.ts: reigan.ts imports this file, so importing
+// it back would be a cycle.
+import { resetExecutor } from '../executorCache'
 
 // The editable allowlist and the credential mask both used to be hand-written
 // here, and both had drifted from reality — `theme` was missing from the
@@ -64,6 +67,11 @@ export const updateSettingTool = new DynamicStructuredTool({
         }
         throw err
       }
+      // The system prompt embeds the settings, so the agent that just changed
+      // one is holding a prompt that still describes the old value. Drop the
+      // cached executor; the next turn rebuilds it with the new state. The
+      // in-flight run keeps its own reference and finishes normally.
+      resetExecutor()
       // Read back: the guard may have normalised the value (a voice name is
       // stored as its id), so echoing the input would misreport what was saved.
       return `Updated ${key} to ${JSON.stringify(getDecodedSetting(key))}.`

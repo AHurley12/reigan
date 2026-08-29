@@ -25,7 +25,9 @@ export function registerSystemHandlers(): void {
       }
       throw err
     }
-    if (key === 'anthropicApiKey') resetExecutor()
+    // The system prompt embeds the live settings block, so any change leaves
+    // the cached executor stale — not just an API-key change.
+    resetExecutor()
     return { success: true }
   })
 

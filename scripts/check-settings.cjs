@@ -136,7 +136,47 @@ check('orb id renders as name', named.includes('Helix'), true)
 // An unusable stored value must be called out, not shown as if it were fine.
 check('unknown voice flagged', describeSettings({ voiceId: 'zenya' }).includes('UNKNOWN'), true)
 
-fs.rmSync(OUT, { recursive: true, force: true })
+// ── Prompt embedding ──────────────────────────────────────────────────────
+// The settings block goes into a ChatPromptTemplate, which parses f-string
+// placeholders. An unescaped brace in a stored value takes the whole agent
+// down at construction, so assert against the real template implementation
+// rather than trusting the regex by eye.
+const { settingsPromptBlock } = require(path.join(OUT, 'shared/settings/describe.js'))
+const BRACEY = { avatarCustomModelLabel: 'my {weird} label', avatarModelChoice: '{input}' }
 
-console.log(`\n${pass} passed, ${fail} failed`)
-process.exit(fail ? 1 : 0)
+check('block escapes braces', settingsPromptBlock(BRACEY).includes('{{weird}}'), true)
+
+const { ChatPromptTemplate, MessagesPlaceholder } = require('@langchain/core/prompts')
+
+async function checkPromptEmbedding() {
+  let messages = null
+  let buildErr = null
+  try {
+    const tpl = ChatPromptTemplate.fromMessages([
+      ['system', `You are a test.\n\n${settingsPromptBlock(BRACEY)}`],
+      new MessagesPlaceholder('chat_history'),
+      ['human', '{input}'],
+    ])
+    messages = await tpl.formatMessages({ input: 'hello', chat_history: [] })
+  } catch (e) {
+    buildErr = e
+  }
+  check('template builds with braces in a value', buildErr ? buildErr.message : null, null)
+  if (!messages) return
+
+  const systemText = String(messages[0].content)
+  check('literal braces survive rendering', systemText.includes('my {weird} label'), true)
+  // A stored value of `{input}` must not be substituted with the user's turn.
+  check('stored {input} not interpolated', systemText.includes('Avatar model: {input}'), true)
+}
+
+checkPromptEmbedding()
+  .catch((err) => {
+    fail++
+    console.log('FAIL prompt embedding threw: ' + err.message)
+  })
+  .then(() => {
+    fs.rmSync(OUT, { recursive: true, force: true })
+    console.log(`\n${pass} passed, ${fail} failed`)
+    process.exit(fail ? 1 : 0)
+  })
