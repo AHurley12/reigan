@@ -12,6 +12,8 @@ declare global {
       getSetting: (key: string) => Promise<string | null>
       setSetting: (key: string, value: string) => Promise<void>
       getAllSettings: () => Promise<Record<string, string>>
+      /** Fires when main changes a setting — today, the assistant with the user's approval. */
+      onSettingsChanged: (callback: (change: { key: string; value: unknown }) => void) => () => void
       getSecretPreviews: () => Promise<Record<string, { hasValue: boolean; last4: string }>>
       getSystemInfo: () => Promise<any>
       voice: {

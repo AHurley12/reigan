@@ -19,6 +19,7 @@ import { migrateSecretsToSafeStorage } from './db/secrets'
 import { registerCapabilityHandlers } from './capabilities/ipc'
 import { pruneOrphanAttachments } from './files/attachmentStore'
 import { registerAllCapabilities } from './capabilities/register'
+import { initSettingsBroadcast } from './settings/broadcast'
 import { seedTemplates } from './devtools/vault/templates'
 import { initJobEngine } from './jobs'
 import { stopScheduler } from './jobs/scheduler'
@@ -152,6 +153,11 @@ if (!gotSingleInstanceLock) {
     registerAvatarHandlers()
     registerFileHandlers()
     registerPerformanceHandlers(mainWindow)
+
+    // Lets main tell the renderer a setting moved. The renderer hydrates its
+    // settings store once at startup and is otherwise the only writer, so an
+    // agent-driven change is invisible to the live UI without this.
+    initSettingsBroadcast(mainWindow)
 
     // Capability registry: declares every capability, then exposes the single
     // generic IPC surface the renderer and the agent both dispatch through.

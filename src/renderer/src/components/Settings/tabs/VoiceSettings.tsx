@@ -8,6 +8,7 @@ import { ApiKeyField } from '../controls/ApiKeyField'
 import { listAudioDevices, onDeviceChange, type DeviceOption } from '../../../voice/audioDeviceManager'
 import { startLevelMonitor } from '../../../voice/micLevelMonitor'
 import { ORB_STYLES } from '../../Orb/engine/orbRegistry'
+import { VOICE_CATALOGUE } from '../../../../../shared/voices'
 
 const ORB_STYLE_OPTIONS = Object.entries(ORB_STYLES).map(([value, def]) => ({
   value,
@@ -15,17 +16,10 @@ const ORB_STYLE_OPTIONS = Object.entries(ORB_STYLES).map(([value, def]) => ({
   labelJa: def.labelJa,
 }))
 
-// Two reliable premade defaults (work on any plan) + 5 free-tier voices
-// pulled from the user's ElevenLabs Voice Library.
-const VOICE_OPTIONS = [
-  { value: 'pNInz6obpgDQGcFmaJgB', label: 'Adam (US)' },
-  { value: 'JBFqnCBsd6RMkjVDRZzb', label: 'George (UK)' },
-  { value: 'f5iYMGdlB5CJwK2vhzsS', label: 'Zenya' },
-  { value: '6fZce9LFNG3iEITDfqZZ', label: 'Charlotte' },
-  { value: 'aEO01A4wXwd1O8GPgGlF', label: 'Arabella (AU)' },
-  { value: 'QeRkfdkzgy4CefJ3AcII', label: 'Sky (UK)' },
-  { value: 'EST9Ui6982FZPSi7gCHi', label: 'Elise' },
-]
+// The catalogue moved to shared/voices.ts so the main process — where the
+// agent runs — can resolve a spoken name like "Zenya" to its id. This dropdown
+// and the voice.set capability now read the same list.
+const VOICE_OPTIONS = VOICE_CATALOGUE.map(({ value, label }) => ({ value, label }))
 
 const INPUT_MODE_OPTIONS = [
   { value: 'true', label: 'Push-to-talk' },

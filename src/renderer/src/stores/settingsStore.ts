@@ -18,6 +18,13 @@ interface SettingsStore {
   secretPreviews: Record<string, SecretPreview>
   loaded: boolean
   set: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void
+  /**
+   * Applies a change main made, without writing it back.
+   *
+   * Distinct from `set` on purpose: `set` echoes to main, so reusing it here
+   * would bounce the value straight back to the process that just sent it.
+   */
+  applyExternalChange: (key: string, value: unknown) => void
   setLoaded: (loaded: boolean) => void
   hydrate: () => Promise<void>
   refreshSecretPreviews: () => Promise<void>
@@ -36,6 +43,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   updateSetting: (key, value) => get().set(key, value),
+
+  applyExternalChange: (key, value) => {
+    // Credentials are never broadcast (see main/settings/broadcast.ts), but
+    // ignoring them here too means a future change to that rule cannot put a
+    // key into the renderer's heap by accident.
+    if (key in DEFAULT_SETTINGS) {
+      set((s) => ({ settings: { ...s.settings, [key]: value } }))
+    }
+  },
 
   setLoaded: (loaded) => set({ loaded }),
 

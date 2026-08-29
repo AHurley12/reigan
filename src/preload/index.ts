@@ -46,6 +46,16 @@ const api = {
   getSetting: (key: string) => ipcRenderer.invoke(IPC.SETTINGS_GET, key),
   setSetting: (key: string, value: string) => ipcRenderer.invoke(IPC.SETTINGS_SET, key, value),
   getAllSettings: () => ipcRenderer.invoke(IPC.SETTINGS_LOAD_ALL),
+  /**
+   * Fires when main changes a setting — which today means the assistant did,
+   * with the user's approval. Without it the store keeps the value it read at
+   * boot and an approved change appears to do nothing until a restart.
+   */
+  onSettingsChanged: (callback: (change: { key: string; value: unknown }) => void) => {
+    const handler = (_: unknown, change: { key: string; value: unknown }) => callback(change)
+    ipcRenderer.on('settings:changed', handler)
+    return () => ipcRenderer.removeListener('settings:changed', handler)
+  },
   getSecretPreviews: () => ipcRenderer.invoke(IPC.SETTINGS_SECRET_PREVIEWS),
 
   // System

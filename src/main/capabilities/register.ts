@@ -10,6 +10,7 @@ import { shellCapabilities } from './defs/shell'
 import { fileorgCapabilities } from './defs/fileorg'
 import { vaultCapabilities } from './defs/vault'
 import { webCapabilities } from './defs/web'
+import { settingsCapabilities } from './defs/settings'
 
 /**
  * The one place every capability module is pulled in.
@@ -29,6 +30,7 @@ export function registerAllCapabilities(): void {
   registerCapabilities(fileorgCapabilities)
   registerCapabilities(vaultCapabilities)
   registerCapabilities(webCapabilities)
+  registerCapabilities(settingsCapabilities)
   // Registered after everything schedulable: jobs.upsert validates that its
   // target capability exists, so the targets must be present first.
   registerCapabilities(jobCapabilities)

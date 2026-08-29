@@ -8,7 +8,6 @@ import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
 import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTools'
-import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
 import { getPerformanceSnapshotTool } from './tools/performanceTools'
 import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
@@ -123,7 +122,6 @@ function getTools(): DynamicStructuredTool[] {
     // must be added as capabilities, not here.
     getTimeTool, getSystemInfoTool, openAppTool,
     searchFilesTool, listDirectoryTool, readFileTool,
-    getSettingsTool, updateSettingTool,
     getPerformanceSnapshotTool,
   ]
 

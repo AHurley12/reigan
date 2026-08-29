@@ -21,6 +21,15 @@ export default function App() {
     useSettingsStore.getState().hydrate()
   }, [])
 
+  // Settings the assistant changed, with the user's approval, are pushed from
+  // main. Without this the store keeps the value it read at boot, so an
+  // approved "switch to the Sakura theme" does nothing visible until restart.
+  useEffect(() => {
+    return window.reigan?.onSettingsChanged?.(({ key, value }) => {
+      useSettingsStore.getState().applyExternalChange(key, value)
+    })
+  }, [])
+
   // App-level so streaming responses land even when Chat isn't the active module.
   useEffect(() => {
     if (!ipc) return

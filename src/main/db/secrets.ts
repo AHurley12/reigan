@@ -20,24 +20,13 @@ import type Database from 'better-sqlite3'
 const ENC_PREFIX = 'enc:v1:'
 
 /**
- * Setting keys treated as credentials.
- *
- * `googleClientId` is deliberately absent: it is transmitted in the consent URL
- * and is not a secret. Encrypting it would imply a confidentiality guarantee
- * that OAuth itself does not make.
+ * The credential list now lives in `shared/secretKeys.ts` — it is a fact about
+ * the settings schema rather than about encryption, and the agent's
+ * editable-key boundary has to consult the same list without importing
+ * Electron. Re-exported here so every existing caller keeps working.
  */
-export const SECRET_SETTING_KEYS = new Set([
-  'anthropicApiKey',
-  'tavilyApiKey',
-  'deepgramApiKey',
-  'elevenLabsApiKey',
-  'googleClientSecret',
-  'googleTokens',
-])
-
-export function isSecretKey(key: string): boolean {
-  return SECRET_SETTING_KEYS.has(key)
-}
+import { isSecretKey } from '../../shared/secretKeys'
+export { SECRET_SETTING_KEYS, isSecretKey } from '../../shared/secretKeys'
 
 function isEncrypted(value: string): boolean {
   return value.startsWith(ENC_PREFIX)
