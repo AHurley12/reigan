@@ -25,6 +25,7 @@ export const BASE_WINDOW_MIN_HEIGHT = 600;
 
 export const DEFAULT_SETTINGS = {
   anthropicApiKey: '',
+  tavilyApiKey: '',
   japaneseLevel: 1 as const,
   showFurigana: true,
   showRomaji: true,

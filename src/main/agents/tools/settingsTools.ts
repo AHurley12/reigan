@@ -6,7 +6,7 @@ import { withPermission } from './permission'
 // Credentials never flow through chat — an agent that can read or overwrite
 // its own API keys is a prompt-injection risk, and rotating them belongs in
 // the Settings UI where the user is looking directly at what they're typing.
-const SECRET_KEYS = new Set(['anthropicApiKey', 'deepgramApiKey', 'elevenLabsApiKey', 'googleClientId', 'googleClientSecret'])
+const SECRET_KEYS = new Set(['anthropicApiKey', 'tavilyApiKey', 'deepgramApiKey', 'elevenLabsApiKey', 'googleClientId', 'googleClientSecret'])
 
 // Every non-secret key in AppSettings (shared/types.ts) — kept as an explicit
 // allowlist rather than "everything except SECRET_KEYS" so a future secret

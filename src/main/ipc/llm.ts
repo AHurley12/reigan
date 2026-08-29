@@ -8,6 +8,7 @@ import { streamResponse } from '../agents/reigan'
 import { saveMessage, saveToolCalls, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
+import { setApprovalConversation } from '../capabilities/approval'
 
 /**
  * In-flight generations, so the UI can stop one. Same shape as the capability
@@ -45,6 +46,13 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       if (mainWindow.isDestroyed()) return
       mainWindow.webContents.send(IPC.LLM_STREAM, { requestId, conversationId: convId, event })
     }
+
+    // Scopes any `approvalPolicy: 'session'` grant to this conversation. Called
+    // per message rather than only on creation, so a grant given in an earlier
+    // conversation cannot carry into a later one; it no-ops when the id is
+    // unchanged. Keyed to `convId` — the module-level `activeConversationId`
+    // this once used is gone, along with the bug that made it stick.
+    setApprovalConversation(convId)
 
     // Truncation happens here rather than through a capability of its own.
     // A `write` capability would raise the approval dialog on every single

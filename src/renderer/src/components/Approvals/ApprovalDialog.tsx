@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { ShieldAlert, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import { approvalIcon } from './approvalIcons'
 import { Button } from '../shared/Button'
 import { useIPC } from '../../hooks/useIPC'
 import type { PendingApproval, RiskTier } from '../../../../shared/types'
@@ -68,6 +69,7 @@ export function ApprovalDialog() {
   }
 
   const accent = riskColor(current.risk)
+  const Icon = approvalIcon(current.capabilityId)
 
   return (
     <div
@@ -82,7 +84,7 @@ export function ApprovalDialog() {
         style={{ background: 'var(--bg-surface)' }}
       >
         <div className="rule-b flex items-center gap-3 px-5 py-4">
-          <ShieldAlert size={18} style={{ color: accent }} />
+          <Icon size={18} style={{ color: accent }} />
           <div className="flex flex-col">
             <span id="approval-title" className="font-display text-sm" style={{ color: 'var(--text-primary)' }}>
               {current.title ?? 'Approval required'}

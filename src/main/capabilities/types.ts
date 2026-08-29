@@ -90,6 +90,29 @@ export interface CapabilityDef<TArgs = unknown, TResult = unknown> {
   /** Required for write/destructive capabilities — enforced at registration. */
   approval?: ApprovalSpec<TArgs>
 
+  /**
+   * Requires approval for a capability whose *tier* does not demand it.
+   *
+   * The four risk tiers answer "does this change the user's data", and approval
+   * has always followed from that. Web search is the first capability where the
+   * answer is no and the user still wants a say: it spends metered credits and
+   * sends their words to a third party. Declaring it `write` to force a prompt
+   * would make the approval card say "Modifies data" about a read, so the honest
+   * fix is a separate axis rather than a misused tier.
+   *
+   *  'session' — prompts once per conversation; approving covers later calls to
+   *              the same capability until the conversation changes. For actions
+   *              a research turn performs repeatedly, where prompting every time
+   *              trains the user to approve without reading.
+   *  'always'  — prompts on every call, like a write. For the expensive end
+   *              (crawling a whole domain), where each call deserves its own
+   *              decision.
+   *
+   * Registration requires an approval spec alongside it, exactly as the write
+   * tiers do.
+   */
+  approvalPolicy?: 'session' | 'always'
+
   /** Gates registration of the tool on a connected Google account. */
   requiresGoogle?: boolean
 

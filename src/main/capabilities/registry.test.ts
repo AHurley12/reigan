@@ -9,8 +9,16 @@ import {
 } from './registry'
 import type { AnyCapability } from './types'
 
+// The session-grant store is stateful by nature, so the mock is too — a
+// `vi.fn()` returning a fixed value could not express "approving once changes
+// the answer for the next call", which is the whole of the session policy.
+const grants = new Set<string>()
 vi.mock('./approval', () => ({
   requestApproval: vi.fn(async () => ({ status: 'approved' })),
+  hasSessionGrant: vi.fn((id: string) => grants.has(id)),
+  recordSessionGrant: vi.fn((id: string) => {
+    grants.add(id)
+  }),
 }))
 import { requestApproval } from './approval'
 
@@ -47,6 +55,7 @@ beforeEach(() => {
   // Unset, which the dispatcher must read as "on" — a security default that
   // only takes effect once someone visits Settings is not a default.
   vi.mocked(getDecodedSetting).mockReturnValue(null)
+  grants.clear()
 })
 
 describe('registration rules', () => {
@@ -307,5 +316,142 @@ describe('handler failures', () => {
     expect(r.ok).toBe(false)
     expect(r.errorCode).toBe('handler_failed')
     expect(r.error).toMatch(/upstream 503/)
+  })
+})
+
+/**
+ * The approval axis that is independent of the risk tier.
+ *
+ * Web search is a `network` read — it changes nothing the user owns — but it
+ * spends metered credits and sends the user's words to a third party. These
+ * tests pin down that the prompt comes from the policy, without the capability
+ * having to lie about its tier to get one.
+ */
+describe('approvalPolicy', () => {
+  const searchLike = (overrides: Partial<AnyCapability> = {}): AnyCapability =>
+    def({
+      id: 'web.search',
+      risk: 'network',
+      approvalPolicy: 'session',
+      approval: { summary: () => 'Search the web' },
+      ...overrides,
+    })
+
+  it('requires an approval spec, exactly as the write tiers do', () => {
+    expect(() =>
+      registerCapability(def({ id: 'web.nospec', risk: 'network', approvalPolicy: 'session' }))
+    ).toThrow(/must also declare an approval spec/)
+  })
+
+  it('prompts for a network capability that the tier alone would let through', async () => {
+    registerCapability(searchLike())
+
+    await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+    expect(requestApproval).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the honest tier on the card rather than claiming a write', async () => {
+    registerCapability(searchLike())
+
+    await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+    expect(vi.mocked(requestApproval).mock.calls[0][0].risk).toBe('network')
+  })
+
+  describe("policy: 'session'", () => {
+    it('prompts once, then runs without asking again', async () => {
+      registerCapability(searchLike())
+
+      const first = await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      const second = await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      const third = await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+      expect(first.ok && second.ok && third.ok).toBe(true)
+      expect(requestApproval).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not bank a grant when the user denied', async () => {
+      vi.mocked(requestApproval).mockResolvedValue({ status: 'denied', reason: 'No.' })
+      registerCapability(searchLike())
+
+      const first = await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      const second = await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+      expect(first.ok).toBe(false)
+      expect(second.ok).toBe(false)
+      // A denial must never be mistaken for an answer covering the conversation.
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
+
+    it('grants only the capability approved, not its whole namespace', async () => {
+      registerCapability(searchLike())
+      registerCapability(searchLike({ id: 'web.extract' }))
+
+      await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      await invokeCapability('web.extract', {}, { invokedBy: 'agent' })
+
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
+
+    // The grant is the user answering for the conversation in front of them. A
+    // job is not that conversation, however open it still is.
+    it('does not lend the conversation grant to a scheduled job', async () => {
+      registerCapability(searchLike())
+
+      await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      await invokeCapability('web.search', {}, { invokedBy: 'job', jobRunId: 'run-1' })
+
+      // Two cards: the job asks for itself rather than riding the chat answer.
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not let a job approval cover the rest of the conversation', async () => {
+      registerCapability(searchLike())
+
+      await invokeCapability('web.search', {}, { invokedBy: 'job', jobRunId: 'run-1' })
+      await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+      // The same boundary from the other side — approving one scheduled run is
+      // not the user opening the conversation up.
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe("policy: 'always'", () => {
+    it('prompts on every call, however many times it is used', async () => {
+      registerCapability(searchLike({ id: 'web.crawl', approvalPolicy: 'always' }))
+
+      await invokeCapability('web.crawl', {}, { invokedBy: 'agent' })
+      await invokeCapability('web.crawl', {}, { invokedBy: 'agent' })
+      await invokeCapability('web.crawl', {}, { invokedBy: 'agent' })
+
+      expect(requestApproval).toHaveBeenCalledTimes(3)
+    })
+
+    it('is never satisfied by a session grant on the same capability', async () => {
+      registerCapability(searchLike({ id: 'web.crawl', approvalPolicy: 'always' }))
+      grants.add('web.crawl')
+
+      await invokeCapability('web.crawl', {}, { invokedBy: 'agent' })
+
+      expect(requestApproval).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('reports the requirement in the capability list, so the UI can show it', () => {
+    registerCapability(searchLike())
+
+    const info = listCapabilities().find((c) => c.id === 'web.search')
+    expect(info?.requiresApproval).toBe(true)
+    expect(info?.risk).toBe('network')
+  })
+
+  it('leaves an ordinary network capability entirely ungated', async () => {
+    registerCapability(def({ id: 'test.plain', risk: 'network' }))
+
+    await invokeCapability('test.plain', {}, { invokedBy: 'agent' })
+
+    expect(requestApproval).not.toHaveBeenCalled()
   })
 })
