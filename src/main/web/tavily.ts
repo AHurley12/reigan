@@ -45,8 +45,6 @@ export const EXTRACT_MAX_CHARS = 12_000
 export const CRAWL_MAX_PAGES = 20
 export const MAP_MAX_PAGES = 50
 
-export type SearchDepth = 'quick' | 'deep'
-
 /**
  * Returns a configured client, or explains what is missing.
  *

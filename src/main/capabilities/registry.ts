@@ -206,9 +206,17 @@ export async function invokeCapability(
   // The tier-independent axis. 'always' is never satisfied in advance; 'session'
   // is satisfied by an approval already given in this conversation. Checked
   // before the prompt so a granted capability costs nothing on later calls.
+  //
+  // Only the agent may spend that grant. The user answered a card about the
+  // conversation they were sitting in front of, so a scheduled job firing while
+  // that conversation happens to still be open is not covered by it — it would
+  // be unattended work running on consent nobody gave it. A job falls through
+  // to its own approval, which the scheduler parks until the user answers.
+  const grantCovers = ctx.invokedBy === 'agent' && hasSessionGrant(cap.id)
+
   const policyNeedsApproval =
     cap.approvalPolicy === 'always' ||
-    (cap.approvalPolicy === 'session' && !hasSessionGrant(cap.id))
+    (cap.approvalPolicy === 'session' && !grantCovers)
 
   const needsApproval = tierNeedsApproval || policyNeedsApproval
   if (needsApproval && (ctx.invokedBy !== 'ui' || requireApprovalForAll())) {
@@ -253,8 +261,11 @@ export async function invokeCapability(
     // Approved, and only past the guard above — a grant must never be banked
     // for a call that was denied. Only a 'session' policy banks it: a
     // tier-driven approval covers this call alone, and 'always' means what it
-    // says.
-    if (cap.approvalPolicy === 'session') recordSessionGrant(cap.id)
+    // says. Banked only for the agent, mirroring who is allowed to spend it, so
+    // a job's approval covers that one run and nothing after it.
+    if (cap.approvalPolicy === 'session' && ctx.invokedBy === 'agent') {
+      recordSessionGrant(cap.id)
+    }
   }
 
   try {

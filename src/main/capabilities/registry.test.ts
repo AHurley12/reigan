@@ -393,6 +393,29 @@ describe('approvalPolicy', () => {
 
       expect(requestApproval).toHaveBeenCalledTimes(2)
     })
+
+    // The grant is the user answering for the conversation in front of them. A
+    // job is not that conversation, however open it still is.
+    it('does not lend the conversation grant to a scheduled job', async () => {
+      registerCapability(searchLike())
+
+      await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+      await invokeCapability('web.search', {}, { invokedBy: 'job', jobRunId: 'run-1' })
+
+      // Two cards: the job asks for itself rather than riding the chat answer.
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not let a job approval cover the rest of the conversation', async () => {
+      registerCapability(searchLike())
+
+      await invokeCapability('web.search', {}, { invokedBy: 'job', jobRunId: 'run-1' })
+      await invokeCapability('web.search', {}, { invokedBy: 'agent' })
+
+      // The same boundary from the other side — approving one scheduled run is
+      // not the user opening the conversation up.
+      expect(requestApproval).toHaveBeenCalledTimes(2)
+    })
   })
 
   describe("policy: 'always'", () => {
