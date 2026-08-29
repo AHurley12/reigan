@@ -1,5 +1,6 @@
 import { lazy } from 'react'
 import type { Theme } from './types'
+import type { ThemeId } from '../../../shared/themeIds'
 import { shinganTokens } from './themes/shingan/tokens'
 import { gothicTokens } from './themes/gothic/tokens'
 import { aeroTokens } from './themes/aero/tokens'
@@ -54,12 +55,8 @@ export const THEMES = {
     Effects: lazy(() => import('./themes/aero/Effects')),
     previewGradient: 'linear-gradient(135deg, #BFE9FF 0%, #16A8D8 55%, #063E56 100%)',
   },
-} satisfies Record<string, Theme>
+} satisfies Record<ThemeId, Theme>
 
-export type ThemeId = keyof typeof THEMES
-
-export const DEFAULT_THEME_ID: ThemeId = 'shingan'
-
-export function isThemeId(value: string | undefined | null): value is ThemeId {
-  return !!value && value in THEMES
-}
+// Ids and display names live in shared/ so the main process can name the
+// active theme without importing this file, which pulls in React and CSS.
+export { type ThemeId, isThemeId, DEFAULT_THEME_ID } from '../../../shared/themeIds'

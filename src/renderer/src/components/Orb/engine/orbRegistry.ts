@@ -1,4 +1,5 @@
 import type { OrbState, AudioData } from './types'
+import type { OrbStyleId } from '../../../../../shared/orbStyles'
 import { ReiganOrb } from './ReiganOrb'
 import { CubeOrb } from './CubeOrb'
 import { SphereOrb } from './SphereOrb'
@@ -24,7 +25,7 @@ export interface OrbStyleDef {
  * entry here to make another orb implementation switchable without touching
  * VoiceOrb.tsx or the settings plumbing.
  */
-export const ORB_STYLES: Record<string, OrbStyleDef> = {
+export const ORB_STYLES = {
   nebula: {
     label: 'Rose Nebula',
     labelJa: '薔薇星雲',
@@ -50,6 +51,6 @@ export const ORB_STYLES: Record<string, OrbStyleDef> = {
     labelJa: 'AIオーブ',
     create: (container, particleCount) => new AiOrb(container, particleCount),
   },
-}
+} satisfies Record<OrbStyleId, OrbStyleDef>
 
-export const DEFAULT_ORB_STYLE = 'nebula'
+export { DEFAULT_ORB_STYLE } from '../../../../../shared/orbStyles'

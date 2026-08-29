@@ -75,6 +75,13 @@ export function normalizeVoiceName(name: string): string {
  * to honour "switch to Zenya" at all. Coercing beats failing here because the
  * user's intent is unambiguous once the name matches exactly one row.
  */
+/** The display name for a voice id, or null when the id is not in the catalogue. */
+export function voiceLabelFor(id: unknown): string | null {
+  if (typeof id !== 'string') return null
+  const match = VOICE_CATALOGUE.find((v) => v.value === id)
+  return match ? match.label : null
+}
+
 export function resolveVoiceId(input: unknown): string | null {
   if (typeof input !== 'string') return null
   const trimmed = input.trim()
