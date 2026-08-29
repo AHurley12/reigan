@@ -15,8 +15,10 @@ const ORB_STYLE_OPTIONS = Object.entries(ORB_STYLES).map(([value, def]) => ({
   labelJa: def.labelJa,
 }))
 
-// Two reliable premade defaults (work on any plan) + 5 free-tier voices
+// Two reliable premade defaults (work on any plan) + free-tier voices
 // pulled from the user's ElevenLabs Voice Library.
+//
+// Elise (EST9Ui6982FZPSi7gCHi) was removed as a paid-tier voice.
 const VOICE_OPTIONS = [
   { value: 'pNInz6obpgDQGcFmaJgB', label: 'Adam (US)' },
   { value: 'JBFqnCBsd6RMkjVDRZzb', label: 'George (UK)' },
@@ -24,7 +26,8 @@ const VOICE_OPTIONS = [
   { value: '6fZce9LFNG3iEITDfqZZ', label: 'Charlotte' },
   { value: 'aEO01A4wXwd1O8GPgGlF', label: 'Arabella (AU)' },
   { value: 'QeRkfdkzgy4CefJ3AcII', label: 'Sky (UK)' },
-  { value: 'EST9Ui6982FZPSi7gCHi', label: 'Elise' },
+  { value: 'wIzYfKZE8c87XZD7bDLH', label: 'Zibby' },
+  { value: 'ut2XM2wJyIZLTtW6lFzZ', label: 'Eliza' },
 ]
 
 const INPUT_MODE_OPTIONS = [
