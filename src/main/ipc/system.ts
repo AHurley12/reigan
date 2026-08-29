@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
-import { getSetting, setSetting, getAllSettings } from '../db/queries'
+import { getSetting, setSetting, getAllSettings, InvalidSettingError } from '../db/queries'
 import { resetExecutor } from '../agents/reigan'
 
 export function registerSystemHandlers(): void {
@@ -14,7 +14,17 @@ export function registerSystemHandlers(): void {
   ipcMain.handle(IPC.SETTINGS_GET, (_event, key: string) => getSetting(key))
 
   ipcMain.handle(IPC.SETTINGS_SET, (_event, key: string, value: string) => {
-    setSetting(key, value)
+    try {
+      setSetting(key, value)
+    } catch (err) {
+      // A rejected setting is a normal outcome (see SETTING_GUARDS), not a
+      // crash. Report it in the existing result shape so the renderer can show
+      // the reason instead of the promise rejecting under the caller.
+      if (err instanceof InvalidSettingError) {
+        return { success: false, error: err.message }
+      }
+      throw err
+    }
     if (key === 'anthropicApiKey') resetExecutor()
     return { success: true }
   })

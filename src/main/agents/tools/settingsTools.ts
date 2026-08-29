@@ -1,6 +1,6 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { getAllSettings, setSetting } from '../../db/queries'
+import { getAllSettings, setSetting, getDecodedSetting, InvalidSettingError } from '../../db/queries'
 import { withPermission } from './permission'
 
 // Credentials never flow through chat — an agent that can read or overwrite
@@ -51,7 +51,20 @@ export const updateSettingTool = new DynamicStructuredTool({
   }),
   func: async ({ key, value }) =>
     withPermission('update_setting', `Change setting "${key}" to ${JSON.stringify(value)}`, () => {
-      setSetting(key, JSON.stringify(value))
-      return `Updated ${key} to ${JSON.stringify(value)}.`
+      try {
+        setSetting(key, JSON.stringify(value))
+      } catch (err) {
+        // Hand the reason back as tool output rather than throwing: the model
+        // can correct itself (a voice *name* resolves, an invented one does
+        // not), whereas an exception just aborts the turn.
+        if (err instanceof InvalidSettingError) {
+          return `Could not update ${key}: ${err.message}`
+        }
+        throw err
+      }
+      // Read back: a guard may have normalised the value (a voice name is
+      // stored as its id), so echoing the input would misreport what was saved.
+      const saved = getDecodedSetting(key)
+      return `Updated ${key} to ${JSON.stringify(saved)}.`
     }),
 })

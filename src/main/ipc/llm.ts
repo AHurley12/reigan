@@ -3,6 +3,7 @@ import { IPC } from '../../shared/types'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, createConversation, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
+import { resolveVoiceId, DEFAULT_VOICE_ID } from '../../shared/voices'
 
 let activeConversationId: string | null = null
 
@@ -53,7 +54,12 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
 
     if (shouldSpeak) {
       const elevenLabsApiKey = getDecodedSetting('elevenLabsApiKey') ?? ''
-      const voiceId = getDecodedSetting('voiceId') ?? undefined
+      // Databases written before setSetting validated this can still hold an
+      // unusable value (a voice *name*, say), which makes ElevenLabs 404 and
+      // drops the reply silently. Resolve it and fall back rather than trusting
+      // what is stored.
+      const storedVoiceId = getDecodedSetting('voiceId')
+      const voiceId = resolveVoiceId(storedVoiceId) ?? DEFAULT_VOICE_ID
       const stabilityRaw = Number(getSetting('ttsStability'))
       const similarityRaw = Number(getSetting('ttsSimilarity'))
       const stability = Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5

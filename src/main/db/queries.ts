@@ -1,5 +1,6 @@
 import { getDatabase } from './database'
 import { Task, TaskStatus, TaskPriority } from '../../shared/types'
+import { resolveVoiceId } from '../../shared/voices'
 import { randomUUID } from 'crypto'
 
 // ── Tasks ──
@@ -157,7 +158,54 @@ export function getDecodedSetting(key: string): string | null {
   }
 }
 
+/** Raised when a setting is rejected, so callers can report *why*. */
+export class InvalidSettingError extends Error {
+  constructor(
+    readonly key: string,
+    message: string
+  ) {
+    super(message)
+    this.name = 'InvalidSettingError'
+  }
+}
+
+/**
+ * Per-key guards for settings whose value has to mean something to an external
+ * API. Returns the value to store (JSON-encoded, as every caller sends it), so
+ * a guard can repair a near-miss rather than only refusing it.
+ *
+ * This sits in `setSetting` rather than in the two call sites because both the
+ * IPC handler and the agent's `update_setting` tool write here, and a guard on
+ * only one of them protects nothing — it was the agent path that saved the bad
+ * `voiceId` that broke speech.
+ */
+const SETTING_GUARDS: Record<string, (decoded: unknown) => string> = {
+  voiceId: (decoded) => {
+    const resolved = resolveVoiceId(decoded)
+    if (!resolved) {
+      throw new InvalidSettingError(
+        'voiceId',
+        `"${String(decoded)}" is not a known voice. ElevenLabs needs an opaque voice id ` +
+          `(e.g. pNInz6obpgDQGcFmaJgB), not a name; saving one it does not recognise makes ` +
+          `every TTS call fail with voice_not_found and silently disables speech.`
+      )
+    }
+    // Re-encode: a name that resolved to an id must be stored as that id.
+    return JSON.stringify(resolved)
+  },
+}
+
 export function setSetting(key: string, value: string): void {
+  const guard = SETTING_GUARDS[key]
+  if (guard) {
+    let decoded: unknown = value
+    try {
+      decoded = JSON.parse(value)
+    } catch {
+      // Legacy unquoted row; validate the raw string as-is.
+    }
+    value = guard(decoded)
+  }
   const db = getDatabase()
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
 }
