@@ -11,3 +11,4 @@ out/
 # bloat, and two of the three are near GitHub per-file limits. Set up Git LFS
 # if these need to be versioned.
 src/renderer/public/models/
+.settings-check/

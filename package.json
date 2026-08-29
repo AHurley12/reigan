@@ -11,7 +11,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "check:settings": "node scripts/check-settings.cjs"
+    "check:settings": "node scripts/check-settings.cjs",
+    "check:settings:db": "tsc src/main/db/queries.ts --module commonjs --target es2020 --esModuleInterop --skipLibCheck --strict --rootDir src --outDir .settings-check && electron scripts/check-settings-db.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",

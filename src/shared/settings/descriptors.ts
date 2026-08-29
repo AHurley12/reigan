@@ -6,13 +6,19 @@ import { THEME_NAMES } from '../themeIds'
 /**
  * The one place that knows a setting exists.
  *
- * Before this table there were four overlapping lists — `AppSettings`,
- * `DEFAULT_SETTINGS`, `EDITABLE_KEYS`/`SECRET_KEYS` in settingsTools, and
- * `SECRET_SETTING_KEYS` in db/secrets — and they had already drifted:
- * `tavilyApiKey` and `googleTokens` were encrypted at rest but absent from the
- * agent's mask, so they reached the model as `enc:v1:…` blobs; and `theme` had
- * a default the agent was never allowed to change. Everything derives from
- * here now, so drift becomes a compile error rather than a silent hole.
+ * Before this table there were three overlapping lists — `AppSettings`,
+ * `DEFAULT_SETTINGS`, and `EDITABLE_KEYS`/`SECRET_KEYS` in settingsTools — and
+ * they had already drifted, in both directions:
+ *
+ *  - `googleTokens` is written by googleAuth as plaintext JSON and was absent
+ *    from the agent's mask, so `get_settings` handed the model the stored
+ *    Google session *including the refresh token*. That is the reason the mask
+ *    is derived here rather than hand-maintained.
+ *  - `theme` had a default and a UI control but was missing from
+ *    `EDITABLE_KEYS`, so the agent silently could not change it.
+ *
+ * Everything derives from this table now, so drift is a compile error rather
+ * than a silent hole.
  */
 
 export type SettingKind = 'toggle' | 'enum' | 'number' | 'text' | 'secret'
@@ -33,10 +39,13 @@ export interface SettingDescriptor {
 }
 
 /**
- * Persisted keys that are not part of `AppSettings`: `tavilyApiKey` is
- * vestigial config from an older build (nothing under src/ reads it) and
- * `googleTokens` is the OAuth blob, refresh token included. Both are listed so
- * the secret mask and the summary account for them instead of leaking blobs.
+ * Persisted keys that are not part of `AppSettings`.
+ *
+ * `googleTokens` is the OAuth blob, refresh token included, written by
+ * googleAuth rather than through the settings UI. `tavilyApiKey` is not read
+ * by any code on this branch, but it exists in databases written by builds
+ * that had web search, so it is listed to keep it masked rather than surfaced
+ * as an unrecognised row.
  */
 export type ExtraSettingKey = 'tavilyApiKey' | 'googleTokens'
 export type SettingKey = keyof typeof DEFAULT_SETTINGS | ExtraSettingKey

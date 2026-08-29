@@ -33,6 +33,10 @@ execFileSync(
     '--target', 'es2020',
     '--esModuleInterop',
     '--skipLibCheck',
+    // Must match the project's tsconfig: without strictNullChecks a
+    // discriminated union like CoerceResult does not narrow, so this compile
+    // would disagree with the real build in both directions.
+    '--strict',
     '--rootDir', 'src',
     '--outDir', OUT,
   ],
