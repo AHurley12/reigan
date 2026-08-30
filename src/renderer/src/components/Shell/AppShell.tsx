@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react'
+import React, { Suspense, lazy, useRef, useCallback, useEffect } from 'react'
 import { TitleBar } from './TitleBar'
 import { NavBar } from '../Nav/NavBar'
 import { ChatPanel } from '../Chat/ChatPanel'
@@ -7,16 +7,28 @@ import { CalendarPanel } from '../Calendar/CalendarPanel'
 import { MailPanel } from '../Mail/MailPanel'
 import { FilesPanel } from '../Files/FilesPanel'
 import { PerformancePanel } from '../Performance/PerformancePanel'
+import { AutomationsPanel } from '../Automations/AutomationsPanel'
 import { OrbColumn } from '../Orb/OrbColumn'
+import { RegionParticles } from '../../theme/particles/RegionParticles'
 import { ToastStack } from '../shared/Toast'
+import { ApprovalDialog } from '../Approvals/ApprovalDialog'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useToastStore } from '../../stores/toastStore'
+import { useJobAlertStore, alertVariant } from '../../stores/jobAlertStore'
 import { useKeyboard } from '../../hooks/useKeyboard'
 import type { AppModule } from '../../../../shared/types'
 
+/**
+ * Lazy: the Dev Tools tree (six views plus its virtual list) must not join the
+ * renderer's single 2.5MB startup chunk, which already dominates cold start.
+ */
+const DevToolsPanel = lazy(() =>
+  import('../DevTools/DevToolsPanel').then((m) => ({ default: m.DevToolsPanel }))
+)
+
 const PLACEHOLDER_MODULES: Partial<Record<AppModule, { en: string; ja: string; romaji: string }>> = {
   automations: { en: 'Automations', ja: '自動化',     romaji: 'jidouka' },
-  dev:         { en: 'Dev Tools',   ja: '開発',       romaji: 'kaihatsu' },
 }
 
 function PlaceholderModule({ module }: { module: AppModule }) {
@@ -56,6 +68,18 @@ export function AppShell() {
 
   useKeyboard(focusChat)
 
+  // Subscribed at the shell, not in the Jobs view: a 04:00 failure has to be
+  // captured whichever tab happens to be open, and the Jobs view is usually not
+  // the one. Toast for the interruption, alert store for the record.
+  useEffect(() => {
+    const bridge = window.reigan?.jobs
+    if (!bridge) return
+    return bridge.onNotification((event) => {
+      useJobAlertStore.getState().push(event)
+      useToastStore.getState().push(`${event.title} — ${event.body}`, alertVariant(event.kind))
+    })
+  }, [])
+
   const renderModule = () => {
     switch (activeModule) {
       case 'chat':
@@ -70,6 +94,14 @@ export function AppShell() {
         return <FilesPanel />
       case 'performance':
         return <PerformancePanel />
+      case 'automations':
+        return <AutomationsPanel />
+      case 'dev':
+        return (
+          <Suspense fallback={<div className="h-full" />}>
+            <DevToolsPanel />
+          </Suspense>
+        )
       default:
         return <PlaceholderModule module={activeModule} />
     }
@@ -89,12 +121,19 @@ export function AppShell() {
           at the moulding instead of squaring off behind it. */}
       <div className="flex flex-1 overflow-hidden gap-2.5 p-2.5">
         <NavBar />
-        <main className="ornate flex-1 overflow-hidden" style={{ backgroundColor: 'transparent' }}>
+        <main className="ornate particle-host flex-1 overflow-hidden" style={{ backgroundColor: 'transparent' }}>
+          {/* Sits on the module ground, beneath every module's own content —
+              see theme/particles/RegionParticles for why z-index does that
+              here and not on the full-viewport layer. */}
+          <RegionParticles region="main" />
           {renderModule()}
         </main>
         {showOrbColumn && <OrbColumn />}
       </div>
       <ToastStack />
+      {/* Global: a write-tier action can be requested from any tab, or by a
+          scheduled job while another tab is open. */}
+      <ApprovalDialog />
     </div>
   )
 }

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Search, Folder, FolderOpen, File as FileIcon, FileText, Image as ImageIcon,
   Code2, Music, Archive, ChevronRight, Home, ArrowUp, RefreshCw, ExternalLink,
+  AlertTriangle,
 } from 'lucide-react'
 import { useIPC } from '../../hooks/useIPC'
 import { SectionHeader } from '../shared/SectionHeader'
 import { useToastStore } from '../../stores/toastStore'
-import { FILE_TYPE_CATEGORIES, categorizeExt } from '../../../../shared/constants'
+import { FILE_TYPE_CATEGORIES, categorizeExt, matchesCategory } from '../../../../shared/constants'
 import type { FileEntry, FileIndexStatus, FileTypeCategoryId } from '../../../../shared/types'
 
 type SortBy = 'name' | 'modified' | 'size'
@@ -184,12 +185,12 @@ export function FilesPanel() {
   const visibleEntries = useMemo(() => {
     if (searchMode) return searchResults
 
-    let entries = dirEntries
-    if (category !== 'all') {
-      entries = entries.filter((e) => e.isDir || categorizeExt(e.ext) === category)
-    }
+    // Same predicate the indexed search applies, so a tab means the same thing
+    // whether you are browsing or searching. Folders are their own kind and show
+    // under All only — as `kind:` does in Explorer.
+    let entries = dirEntries.filter((e) => matchesCategory(e, category))
     const after = modifiedAfterMs(modifiedFilter)
-    if (after) entries = entries.filter((e) => e.isDir || e.mtime >= after)
+    if (after) entries = entries.filter((e) => e.mtime >= after)
 
     const sorted = [...entries].sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
@@ -201,6 +202,8 @@ export function FilesPanel() {
     })
     return sorted
   }, [searchMode, searchResults, dirEntries, category, modifiedFilter, sortBy, sortDir])
+
+  const filtersActive = category !== 'all' || modifiedFilter !== 'any'
 
   const crumbs = homeDir && currentDir ? breadcrumbSegments(currentDir, homeDir) : []
 
@@ -273,6 +276,24 @@ export function FilesPanel() {
             {indexStatus.indexing
               ? `Indexing… ${indexStatus.filesIndexed.toLocaleString()} files scanned`
               : `${indexStatus.filesIndexed.toLocaleString()} files indexed`}
+          </div>
+        )}
+
+        {/* The indexer has always recorded its failures here; nothing rendered
+            them, so a rebuild could die and the panel would keep showing a stale
+            count as though all were well. */}
+        {indexStatus?.error && !indexStatus.indexing && (
+          <div
+            className="mx-4 mb-1 px-3 py-2 rounded flex items-start gap-2"
+            style={{
+              background: 'color-mix(in srgb, var(--status-error) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--status-error) 30%, transparent)',
+            }}
+          >
+            <AlertTriangle size={13} style={{ color: 'var(--status-error)', flexShrink: 0, marginTop: 1 }} />
+            <span className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              Last index rebuild failed — results below may be stale or incomplete. {indexStatus.error}
+            </span>
           </div>
         )}
 
@@ -380,8 +401,29 @@ export function FilesPanel() {
           {visibleEntries.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center h-full gap-1.5 text-center px-6">
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {searchMode ? 'No matching files.' : 'This folder is empty.'}
+                {searchMode
+                  ? 'No matching files.'
+                  : filtersActive
+                    ? 'Nothing in this folder matches the current filters.'
+                    : 'This folder is empty.'}
               </p>
+              {/* Without this the panel used to say "This folder is empty" for a
+                  folder full of files, which reads as the filter being broken
+                  rather than being the thing hiding them. */}
+              {filtersActive && !searchMode && dirEntries.length > 0 && (
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  {dirEntries.length.toLocaleString()} {dirEntries.length === 1 ? 'item is' : 'items are'} hidden.
+                </p>
+              )}
+              {filtersActive && (
+                <button
+                  onClick={() => { setCategory('all'); setModifiedFilter('any') }}
+                  className="mt-1 text-[11px] px-2 py-1 rounded-md hover:bg-tint/5 transition-colors"
+                  style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           )}
 

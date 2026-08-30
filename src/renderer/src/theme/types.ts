@@ -1,4 +1,6 @@
 import type { ComponentType, LazyExoticComponent } from 'react'
+import type { ReiganState } from '../../../shared/types'
+import type { FieldLoader } from './particles/types'
 
 export interface ThemeTokens {
   surface: {
@@ -42,6 +44,34 @@ export interface ThemeTokens {
      * glossy button instead of a two-stop ramp has to say so here.
      */
     gradient: string
+  }
+  /**
+   * Categorical chart series, in fixed slot order. A chart assigns slot 1 to its
+   * first series, 2 to the second, 3 to the third — always by identity, never by
+   * rank, so filtering a series out never repaints the survivors.
+   *
+   * These are deliberately *not* aliases of `accent` or of the `--status-*`
+   * colours. Two separate reasons:
+   *
+   *  - Status colours mean something. Reusing `accent.success` as "series 2"
+   *    tells a reader that series 2 is doing well, which is a claim the chart
+   *    never made.
+   *  - Accents are chosen to sit under body text, not beside each other. Three
+   *    of them together routinely fail on colour-vision deficiency: a red and a
+   *    gold at the same lightness are the same swatch to a deuteranope.
+   *
+   * So each skin states its own triad, and every triad here has been checked —
+   * not eyeballed — against the OKLCH lightness band, a chroma floor, simulated
+   * protan/deutan/tritan separation, normal-vision separation, and WCAG contrast
+   * on that skin's own chart surface. The pattern that makes them pass is a
+   * deliberate *lightness stagger* between the warm slots, because CVD collapses
+   * hue but leaves lightness intact. Re-validate before changing any value; see
+   * SKIN_CONTRACT §Chart series.
+   */
+  chart: {
+    series1: string
+    series2: string
+    series3: string
   }
   border: {
     subtle: string
@@ -143,6 +173,18 @@ export interface MotionProfile {
 export interface EffectsProps {
   reducedMotion: boolean
   paused: boolean
+  /**
+   * What the assistant is currently doing. Supplied to every ambient layer so a
+   * skin may treat its atmosphere as a status display — sakura's petals swirl
+   * toward the chat surface while a response generates, which is that skin's
+   * signature element.
+   *
+   * Skins are free to ignore it, and the three that predate it do. A layer that
+   * *does* use it must hold the value in a ref rather than in its effect's
+   * dependencies: a state change should retarget the animation, never tear down
+   * and restart the RAF loop.
+   */
+  activity: ReiganState
 }
 
 /**
@@ -203,6 +245,21 @@ export interface Theme {
   frame?: () => ThemeFrame
   /** Lazy-loaded ambient layer. Must be pure visual, pointer-events: none. */
   Effects: LazyExoticComponent<ComponentType<EffectsProps>>
+  /**
+   * Optional particle field painted *inside* the nav rail and the module area,
+   * beneath every child of each (see particles/RegionParticles).
+   *
+   * This is the second of the two ambient surfaces, and the two answer
+   * different questions. `Effects` is one full-viewport layer that either floats
+   * over all content or sits under it as the skin's ground; `particles` puts
+   * motion on two specific panels without touching either the palette or the
+   * stacking of anything else. A theme may ship one, both, or neither.
+   *
+   * Lazily imported so a field never joins the renderer's startup chunk, and
+   * dynamically rather than via React.lazy because a field is a plain factory,
+   * not a component — the host owns the whole canvas lifecycle.
+   */
+  particles?: FieldLoader
   /** Static preview swatch for the selector — no animation, cheap to render. */
   previewGradient: string
 }

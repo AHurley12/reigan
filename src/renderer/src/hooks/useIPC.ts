@@ -2,8 +2,9 @@ declare global {
   interface Window {
     reigan: {
       initialThemeId: string
-      sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) => Promise<{ conversationId: string }>
-      onStream: (callback: (data: { token: string; done: boolean; conversationId: string }) => void) => () => void
+      sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string; truncateFromTimestamp?: number; attachments?: import('../../../shared/types').ChatAttachmentInput[] }) => Promise<{ conversationId: string; requestId: string }>
+      abortMessage: (requestId: string) => Promise<boolean>
+      onStream: (callback: (frame: import('../../../shared/types').ChatStreamFrame) => void) => () => void
       createTask: (params: object) => Promise<any>
       listTasks: (params?: object) => Promise<any[]>
       updateTask: (id: string, updates: object) => Promise<any>
@@ -11,6 +12,9 @@ declare global {
       getSetting: (key: string) => Promise<string | null>
       setSetting: (key: string, value: string) => Promise<void>
       getAllSettings: () => Promise<Record<string, string>>
+      /** Fires when main changes a setting — today, the assistant with the user's approval. */
+      onSettingsChanged: (callback: (change: { key: string; value: unknown }) => void) => () => void
+      getSecretPreviews: () => Promise<Record<string, { hasValue: boolean; last4: string }>>
       getSystemInfo: () => Promise<any>
       voice: {
         startListening: () => Promise<void>
@@ -53,6 +57,11 @@ declare global {
         open: (filePath: string) => Promise<{ opened: boolean }>
         reveal: (filePath: string) => Promise<{ revealed: boolean }>
       }
+      jobs: {
+        onNotification: (
+          callback: (event: import('../../../shared/types').JobNotification) => void
+        ) => () => void
+      }
       perf: {
         staticInfo: () => Promise<import('../../../shared/types').PerfStaticInfo>
         start: () => Promise<{ started: boolean }>
@@ -62,6 +71,40 @@ declare global {
       // Contract lives in shared/ so preload and renderer share one definition
       // without the renderer importing across the process boundary.
       auth: import('../../../shared/auth-types').VoiceAuthBridge
+      // Generic capability surface — no per-feature bridge method. Anything
+      // registered in main/capabilities is reachable through invoke().
+      capabilities: {
+        invoke: <T = unknown>(
+          id: string,
+          args?: unknown,
+          invocationId?: string
+        ) => Promise<import('../../../shared/types').CapabilityInvokeResult<T>>
+        cancel: (invocationId: string) => Promise<boolean>
+        list: () => Promise<
+          Array<{
+            id: string
+            title: string
+            description: string
+            risk: import('../../../shared/types').RiskTier
+            uiOnly: boolean
+            uiOnlyReason?: string
+            requiresApproval: boolean
+            requiresGoogle: boolean
+          }>
+        >
+        onProgress: (
+          callback: (data: { invocationId: string; done: number; total: number; label?: string }) => void
+        ) => () => void
+      }
+      approvals: {
+        pending: () => Promise<import('../../../shared/types').PendingApproval[]>
+        history: (limit?: number) => Promise<import('../../../shared/types').PendingApproval[]>
+        resolve: (id: string, approved: boolean) => void
+        onRequest: (
+          callback: (request: import('../../../shared/types').PendingApproval) => void
+        ) => () => void
+        onPendingChanged: (callback: () => void) => () => void
+      }
       minimize: () => void
       maximize: () => void
       close: () => void

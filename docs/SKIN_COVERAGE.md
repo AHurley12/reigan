@@ -202,3 +202,76 @@ skin exposed:
 | Cut | Why |
 | --- | --- |
 | Grass/leaf silhouette in the ambient layer | Built, rendered, looked at, deleted. The app's panels cover the bottom of the window edge to edge, so a band along the bottom of the ambient layer has no exposed real estate — behind 40% white and a 9px blur it produced nothing but a faint darkening. An invisible element that still costs a raster is worse than no element. |
+
+---
+
+## Automations tab (Phases 1–2)
+
+Every component added by the Automations build. All colour comes from tokens —
+no hex, no `rgb()`, no named colours. Verified by reading each file: the only
+literal colour-ish values are `transparent` inside `color-mix()` calls, which is
+a mixing operand rather than a colour choice.
+
+| Component | Tokens used | Notes |
+| --- | --- | --- |
+| `Automations/AutomationsPanel.tsx` | `--text-kanji`, `--text-muted` + `bg-tint`/`text-txt-*` utilities | Section rail and the not-yet-built placeholder |
+| `Automations/JobsView.tsx` | `--status-success`, `--status-processing`, `--status-error`, `--status-listening`, `--status-speaking`, `--text-primary/secondary/muted` | Status badges derive fill and border from one token via `color-mix()`, so a skin changing `--status-error` restyles every failure badge |
+| `Automations/YouTubeView.tsx` | `--accent-primary`, `--status-success`, `--status-speaking`, `--status-listening`, `--status-error`, `--bg-surface`, `--border`, `--text-*` | Quota meter turns `--status-error` at 80% of budget |
+| `Automations/Sparkline.tsx` | Accepts a colour prop, always passed a `var()` reference | Inline SVG rather than a chart library, specifically so the skin owns the palette |
+| `Approvals/ApprovalDialog.tsx` | `--bg-void` (scrim via `color-mix`), `--bg-surface`, `--border`, `--accent-primary`, `--status-error`, `--text-*` | Destructive risk swaps the accent for `--status-error` |
+
+### Divider discipline
+
+`ApprovalDialog`'s diff rows initially drew their own `borderTop`, which
+`globals.css` explicitly forbids — the app has exactly one divider and the theme
+decides what it looks like. Converted to the `.rule` class. The surrounding box
+uses `border-[var(--border)]`, which is a container edge rather than a division,
+matching the existing idiom in `TaskPanel`'s input.
+
+### Not yet audited
+
+Sections that are still placeholders (`content`, `assets`, `mail`, `digest`,
+`usage`, `social`) render through `AutomationsPanel`'s `ComingSoon`, which is
+tokenized. They will need their own rows here as they are built.
+
+---
+
+## Dev Tools addendum
+
+Components added by the Dev Tools tab build. Every one was written against
+tokens from the start rather than converted afterwards, so the "before" column
+that the original audit needed does not apply — the check here is that nothing
+reintroduced a hardcoded value.
+
+Verified by grepping the new tree for hex literals, `rgb(`/`rgba(`, and
+Tailwind colour utilities (`bg-white`, `text-black`, `border-gray-*`): zero
+matches.
+
+| Component | Mount | Tokens used |
+| --- | --- | --- |
+| DevTools/DevToolsPanel | ⚡ module = dev | `--accent-primary`, `--reigan-primary`, `--text-primary/muted/kanji`, `--bg-elevated` |
+| DevTools/devtoolsRegistry | — | no styling (registry only) |
+| DevTools/shared/AsyncPane | ⚡ every view, all three states | `--bg-elevated`, `--border`, `--text-primary/secondary/muted`, `--status-critical`, `--accent-primary` |
+| DevTools/shared/VirtualList | ⚡ lists > 200 rows | no colour of its own (layout only) |
+| DevTools/views/ProjectsView | ⚡ sub-tab = projects | `--status-good/warning/critical` (status ramp), `--bg-elevated`, `--border`, `--border-accent`, `--accent-primary`, `--text-*` |
+| DevTools/views/PortsView | ⚡ sub-tab = ports | `--status-warning/critical`, `--bg-elevated`, `--border`, `--text-*` |
+| DevTools/views/ShellView | ⚡ sub-tab = shell | `--status-good/warning/critical` (classification tiers), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
+| DevTools/views/OrganizerView | ⚡ sub-tab = organizer | `--accent-primary`, `--border`, `--border-accent`, `--bg-elevated`, `--status-good`, `--text-*` |
+| DevTools/views/VaultView | ⚡ sub-tab = vault | `--status-warning` (secret badge), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
+| DevTools/views/GitHubView | ⚡ sub-tab = github | `--text-secondary/muted` |
+| DevTools/views/ErrorsView | ⚡ sub-tab = errors | `--status-warning`/`--status-critical` (severity), `--bg-elevated`, `--border`, `--border-accent`, `--text-*` |
+
+### Notes
+
+**No new tokens were added.** Project activity status (active / warm / dormant
+/ abandoned) and shell classification tiers (allow / approval / block) both
+reuse the existing `--status-good` / `--status-warning` / `--status-critical`
+ramp that the Performance views already use. A parallel palette would have
+looked identical on the shipped skins and then drifted the moment a fourth
+skin retuned one ramp and not the other.
+
+**Conditional mounts.** Every view here is `⚡` twice over — the tab is
+`React.lazy` and each sub-section is too, so none of them appear in a default
+screenshot. AsyncPane's error and empty branches need their states forced to
+be seen at all, which is exactly where the original audit found coverage gaps
+hiding.

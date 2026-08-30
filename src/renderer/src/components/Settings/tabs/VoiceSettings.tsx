@@ -16,9 +16,10 @@ const ORB_STYLE_OPTIONS = Object.entries(ORB_STYLES).map(([value, def]) => ({
   labelJa: def.labelJa,
 }))
 
-// The catalogue lives in shared/ so the main process validates writes against
-// the same rows this dropdown offers. Adding a voice there adds it here.
-const VOICE_OPTIONS = VOICE_CATALOGUE
+// The catalogue moved to shared/voices.ts so the main process — where the
+// agent runs — can resolve a spoken name like "Zenya" to its id. This dropdown
+// and the voice.set capability now read the same list.
+const VOICE_OPTIONS = VOICE_CATALOGUE.map(({ value, label }) => ({ value, label }))
 
 const INPUT_MODE_OPTIONS = [
   { value: 'true', label: 'Push-to-talk' },

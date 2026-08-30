@@ -5,6 +5,12 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { STATE_COLORS } from '../../../../shared/constants'
 import { Select } from '../Settings/controls/Select'
 import { AvatarEngine } from './engine/AvatarEngine'
+import {
+  resolveModelChoice,
+  UPLOAD_OPTION,
+  CUSTOM_OPTION,
+  NONE_OPTION,
+} from './engine/modelChoice'
 
 const PRESET_MODELS: Record<string, { label: string; url: string }> = {
   riruka: { label: 'Riruka', url: '/models/riruka.glb' },
@@ -12,8 +18,7 @@ const PRESET_MODELS: Record<string, { label: string; url: string }> = {
   'anime-girl-3d-model': { label: 'anime+girl+3d+model', url: '/models/anime-girl-3d-model.glb' },
 }
 
-const UPLOAD_OPTION = '__upload__'
-const CUSTOM_OPTION = '__custom__'
+const PRESET_IDS = Object.keys(PRESET_MODELS)
 
 export function AvatarPanel() {
   const reiganState = useAppStore((s) => s.reiganState)
@@ -28,35 +33,72 @@ export function AvatarPanel() {
   const engineRef = useRef<AvatarEngine | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const customUrlRef = useRef<string | null>(null)
-  const restoredCustomRef = useRef(false)
+  const restoredRef = useRef(false)
 
-  const [modelChoice, setModelChoice] = useState<string>('riruka')
+  // null means "the persisted choice hasn't been resolved yet". Seeding this
+  // with a default instead is what put an avatar on screen with None selected:
+  // the default's load fired in the same commit that restored the saved
+  // choice, and the GLB landed a beat after the stage had been cleared.
+  const [modelChoice, setModelChoice] = useState<string | null>(null)
   const [customModel, setCustomModel] = useState<{ url: string; label: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ title: string; detail: string } | null>(null)
 
   // Restore the persisted choice once settings have loaded — including pulling
   // a previously-uploaded custom model's bytes back off disk.
   useEffect(() => {
-    if (!settingsLoaded || restoredCustomRef.current) return
-    restoredCustomRef.current = true
+    if (!settingsLoaded || restoredRef.current) return
+    restoredRef.current = true
 
-    if (savedModelChoice === CUSTOM_OPTION) {
-      window.reigan?.avatar.loadModel().then((data) => {
-        if (!data) return
+    let cancelled = false
+
+    void (async () => {
+      // Pull an uploaded model back off disk on every launch, not only when it
+      // happens to be the active choice: picking a preset and restarting used
+      // to drop it out of the list entirely, leaving re-uploading as the only
+      // way back to bytes that were sitting on disk the whole time.
+      let readFailed = false
+      const data = await window.reigan?.avatar.loadModel().catch(() => {
+        readFailed = true
+        return null
+      })
+      if (cancelled) return
+
+      let hasCustom = false
+      if (data) {
+        hasCustom = true
         if (customUrlRef.current) URL.revokeObjectURL(customUrlRef.current)
         const url = URL.createObjectURL(new Blob([data.slice()], { type: 'model/gltf-binary' }))
         customUrlRef.current = url
         setCustomModel({ url, label: savedCustomLabel || 'Custom model' })
-        setModelChoice(CUSTOM_OPTION)
-      })
-    } else if (savedModelChoice && PRESET_MODELS[savedModelChoice]) {
-      setModelChoice(savedModelChoice)
-    }
-  }, [settingsLoaded, savedModelChoice, savedCustomLabel])
+      }
 
-  const activeUrl = modelChoice === CUSTOM_OPTION ? customModel?.url : PRESET_MODELS[modelChoice]?.url
+      // Reconcile the stored choice with what actually exists — see
+      // modelChoice.ts for the rule and its tests. The select, the stage and
+      // the stored setting all end up saying the same thing.
+      const { choice, persist } = resolveModelChoice({
+        saved: savedModelChoice,
+        hasCustomOnDisk: hasCustom,
+        presetIds: PRESET_IDS,
+        readFailed,
+      })
+
+      if (persist) setSetting('avatarModelChoice', choice)
+      setModelChoice(choice)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [settingsLoaded, savedModelChoice, savedCustomLabel, setSetting])
+
+  const activeUrl =
+    modelChoice === null || modelChoice === NONE_OPTION
+      ? undefined
+      : modelChoice === CUSTOM_OPTION
+        ? customModel?.url
+        : PRESET_MODELS[modelChoice]?.url
 
   // Init the engine once on mount.
   useEffect(() => {
@@ -75,10 +117,20 @@ export function AvatarPanel() {
     engineRef.current?.setThrottled(reiganState === 'listening')
   }, [reiganState])
 
-  // Load whichever model is active.
+  // Load whichever model is active. Nothing is fetched until the persisted
+  // choice has actually been resolved, so no load can be started on behalf of a
+  // choice the user never made.
   useEffect(() => {
     const engine = engineRef.current
-    if (!engine || !activeUrl) return
+    if (!engine || modelChoice === null) return
+
+    if (!activeUrl) {
+      engine.clearModel()
+      setLoading(false)
+      setProgress(0)
+      setError(null)
+      return
+    }
 
     setLoading(true)
     setProgress(0)
@@ -87,14 +139,14 @@ export function AvatarPanel() {
     engine.onLoadProgress = (p) => setProgress(Math.round(p * 100))
     engine.onLoadComplete = () => setLoading(false)
     engine.onLoadError = (err) => {
-      setError(err.message)
+      setError({ title: 'failed to load model', detail: err.message })
       setLoading(false)
     }
 
     engine.loadModel(activeUrl).catch(() => {
       /* handled via onLoadError */
     })
-  }, [activeUrl])
+  }, [activeUrl, modelChoice])
 
   // Clean up blob URLs when replaced or on unmount.
   useEffect(() => {
@@ -124,13 +176,24 @@ export function AvatarPanel() {
     setCustomModel({ url, label: file.name })
     setModelChoice(CUSTOM_OPTION)
 
-    const buffer = await file.arrayBuffer()
-    await window.reigan?.avatar.saveModel(buffer)
-    setSetting('avatarCustomModelLabel', file.name)
-    setSetting('avatarModelChoice', CUSTOM_OPTION)
+    // The choice is only written once the bytes are safely on disk — recording
+    // "custom" for an upload that failed to save would point the next launch at
+    // a model that isn't there.
+    try {
+      const buffer = await file.arrayBuffer()
+      await window.reigan?.avatar.saveModel(buffer)
+      setSetting('avatarCustomModelLabel', file.name)
+      setSetting('avatarModelChoice', CUSTOM_OPTION)
+    } catch (err) {
+      setError({
+        title: 'failed to save model',
+        detail: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const selectOptions = [
+    { value: NONE_OPTION, label: 'None' },
     ...Object.entries(PRESET_MODELS).map(([value, m]) => ({ value, label: m.label })),
     ...(customModel ? [{ value: CUSTOM_OPTION, label: customModel.label }] : []),
     { value: UPLOAD_OPTION, label: 'Upload model…' },
@@ -169,17 +232,21 @@ export function AvatarPanel() {
             style={{ background: 'var(--bg-elevated)' }}
           >
             <span className="text-[11px] font-mono" style={{ color: 'var(--critical)' }}>
-              failed to load model
+              {error.title}
             </span>
             <span className="text-[10px] font-mono truncate max-w-full" style={{ color: 'var(--text-muted)' }}>
-              {error}
+              {error.detail}
             </span>
           </div>
         )}
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <Select value={modelChoice} options={selectOptions} onChange={handleSelectChange} />
+        <Select
+          value={modelChoice ?? NONE_OPTION}
+          options={selectOptions}
+          onChange={handleSelectChange}
+        />
         <button
           onClick={() => fileInputRef.current?.click()}
           title="Upload model"

@@ -6,6 +6,27 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 // needs to be a light courtesy throttle, not a hard guard.
 const THROTTLED_FRAME_INTERVAL_MS = 1000 / 30
 
+function disposeMaterial(material: THREE.Material): void {
+  // Material.dispose() releases the program, not the maps hanging off it, so
+  // every texture has to be walked by hand — otherwise each model switch
+  // leaves its predecessor's textures resident on the GPU.
+  for (const value of Object.values(material as unknown as Record<string, unknown>)) {
+    if (value instanceof THREE.Texture) value.dispose()
+  }
+  material.dispose()
+}
+
+function disposeSubtree(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry?.dispose()
+      const material = child.material
+      if (Array.isArray(material)) material.forEach(disposeMaterial)
+      else if (material) disposeMaterial(material)
+    }
+  })
+}
+
 // Minimal GLB viewer: load, frame, light, orbit + auto-spin. No mood/rigging
 // system yet — that lands once animations are wired up.
 export class AvatarEngine {
@@ -19,6 +40,11 @@ export class AvatarEngine {
   private resizeObserver: ResizeObserver
   private disposed = false
   private autoSpin = true
+  // Bumped by every loadModel/clearModel/dispose. A GLB fetch can easily
+  // outlive the choice that started it, and three's loader has no cancel — so
+  // the token is what decides whether a load that finally arrives is still
+  // wanted, or is a ghost from a superseded selection.
+  private loadToken = 0
   // Shares the main thread with mic capture while listening — see ReiganOrb
   // for why this gets capped instead of rendering full tilt.
   private throttled = false
@@ -74,16 +100,21 @@ export class AvatarEngine {
 
   async loadModel(url: string): Promise<void> {
     const loader = new GLTFLoader()
+    const token = ++this.loadToken
 
     return new Promise((resolve, reject) => {
       loader.load(
         url,
         (gltf) => {
-          if (this.disposed) return
-
-          if (this.model) {
-            this.scene.remove(this.model)
+          if (this.disposed || token !== this.loadToken) {
+            // Superseded mid-flight. The GLB still parsed into real GPU
+            // resources, so it gets torn down rather than dropped on the floor.
+            disposeSubtree(gltf.scene)
+            resolve()
+            return
           }
+
+          this.clearModel({ keepToken: true })
           this.model = gltf.scene
 
           // Normalize scale to fit a ~1-unit box, then rest it on the floor
@@ -104,15 +135,39 @@ export class AvatarEngine {
           resolve()
         },
         (event) => {
+          if (this.disposed || token !== this.loadToken) return
           if (event.total > 0) this.onLoadProgress?.(event.loaded / event.total)
         },
         (error) => {
           const err = error instanceof Error ? error : new Error(String(error))
+          // A stale failure must not paint an error over whatever the current
+          // selection is showing.
+          if (this.disposed || token !== this.loadToken) {
+            resolve()
+            return
+          }
           this.onLoadError?.(err)
           reject(err)
         },
       )
     })
+  }
+
+  /**
+   * Empty the stage. The lights, camera and orbit controls stay up, so the
+   * panel keeps rendering its own background rather than collapsing — this is
+   * the "no avatar" state, not a teardown.
+   *
+   * Bumping the token is the point as much as removing the mesh: clearing has
+   * to orphan any load still in flight, or the stage refills itself a moment
+   * after being emptied.
+   */
+  clearModel(options?: { keepToken?: boolean }): void {
+    if (!options?.keepToken) this.loadToken++
+    if (!this.model) return
+    this.scene.remove(this.model)
+    disposeSubtree(this.model)
+    this.model = null
   }
 
   setAutoSpin(enabled: boolean): void {
@@ -151,18 +206,12 @@ export class AvatarEngine {
 
   dispose(): void {
     this.disposed = true
+    this.loadToken++
     if (this.animationFrameId !== null) cancelAnimationFrame(this.animationFrameId)
     this.resizeObserver.disconnect()
     this.controls.dispose()
 
-    this.scene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose()
-        const material = child.material
-        if (Array.isArray(material)) material.forEach((m) => m.dispose())
-        else material?.dispose()
-      }
-    })
+    disposeSubtree(this.scene)
 
     this.renderer.dispose()
     if (this.renderer.domElement.parentElement) {

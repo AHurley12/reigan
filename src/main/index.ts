@@ -11,12 +11,18 @@ import { registerMailHandlers } from './ipc/mail'
 import { registerAvatarHandlers } from './ipc/avatar'
 import { registerFileHandlers } from './ipc/files'
 import { registerPerformanceHandlers } from './ipc/performance'
-import { registerAgentHandlers } from './ipc/agent'
 import { registerVoiceAuthHandlers } from './ipc/voiceAuth'
 import { stopMonitoring } from './perf/perfMonitor'
-import { runFullIndex } from './files/fileIndexer'
 import { getDatabase, closeDatabase } from './db/database'
 import { getDecodedSetting } from './db/queries'
+import { migrateSecretsToSafeStorage } from './db/secrets'
+import { registerCapabilityHandlers } from './capabilities/ipc'
+import { pruneOrphanAttachments } from './files/attachmentStore'
+import { registerAllCapabilities } from './capabilities/register'
+import { initSettingsBroadcast } from './settings/broadcast'
+import { seedTemplates } from './devtools/vault/templates'
+import { initJobEngine } from './jobs'
+import { stopScheduler } from './jobs/scheduler'
 import {
   UI_SCALE,
   BASE_WINDOW_WIDTH,
@@ -34,6 +40,7 @@ const THEME_BACKGROUNDS: Record<string, string> = {
   // there is no token to mirror here — this is the sky the ambient gradient
   // starts from, which is what the window should flash before it paints.
   aero: '#7FD4F5',
+  sakura: '#14121A',
 }
 const DEFAULT_THEME_ID = 'shingan'
 
@@ -68,6 +75,14 @@ function createWindow(initialThemeId: string): BrowserWindow {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // Cold-start budget instrumentation. Gated behind an env var so it costs
+    // nothing normally, and lives in the shipped code path so before/after
+    // numbers are measured identically rather than by hand-editing.
+    if (process.env.REIGAN_STARTUP_TRACE) {
+      // process.uptime() covers Electron boot too, which is what "cold start"
+      // means to the user — not just the time since our first line ran.
+      console.log(`[startup] ready-to-show ${(process.uptime() * 1000).toFixed(0)}ms`)
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -114,8 +129,13 @@ if (!gotSingleInstanceLock) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    // Initialize DB
-    getDatabase()
+    // Initialize DB (runs pending schema migrations — see db/migrations.ts)
+    const db = getDatabase()
+
+    // Encrypt any credential rows left in plaintext by an earlier build. Must
+    // come after whenReady(): safeStorage has no OS keyring before that point.
+    const encrypted = migrateSecretsToSafeStorage(db)
+    if (encrypted > 0) console.log(`[secrets] encrypted ${encrypted} plaintext credential row(s)`)
 
     // Synchronous (better-sqlite3) so the window's initial theme is known
     // before creation — see THEME_BACKGROUNDS and preload/index.ts.
@@ -133,13 +153,38 @@ if (!gotSingleInstanceLock) {
     registerAvatarHandlers()
     registerFileHandlers()
     registerPerformanceHandlers(mainWindow)
-    registerAgentHandlers(mainWindow)
+
+    // Lets main tell the renderer a setting moved. The renderer hydrates its
+    // settings store once at startup and is otherwise the only writer, so an
+    // agent-driven change is invisible to the live UI without this.
+    initSettingsBroadcast(mainWindow)
+
+    // Capability registry: declares every capability, then exposes the single
+    // generic IPC surface the renderer and the agent both dispatch through.
+    registerAllCapabilities()
+    registerCapabilityHandlers(mainWindow)
+
+    // Deleting a conversation cascades its attachment rows away, but SQLite
+    // cannot unlink the files they pointed at. Without this sweep every deleted
+    // conversation leaks its images and PDFs onto disk permanently.
+    const pruned = pruneOrphanAttachments()
+    if (pruned > 0) console.log(`[attachments] removed ${pruned} orphaned file(s)`)
+
+    // Idempotent: seeds the shipped config templates on first run only.
+    const seeded = seedTemplates()
+    if (seeded > 0) console.log(`[vault] seeded ${seeded} built-in config template(s)`)
+
+    // Durable job engine. Started after the capability registry, since every job
+    // dispatches through it. Boot catch-up runs here — see jobs/scheduler.ts.
+    initJobEngine(mainWindow)
+
     // Registered last: initialise() locks the session, so anything above that
     // wants to run at startup does so before the gate closes.
     registerVoiceAuthHandlers(mainWindow)
 
-    // Background file index build — non-blocking, renderer polls FILES_INDEX_STATUS.
-    runFullIndex().catch(() => {})
+    // The file index is now the "Rebuild file index" job (seeded in jobs/seed.ts)
+    // rather than an untracked boot-time side effect, so its runs, failures and
+    // timings show up in the Jobs view like everything else.
 
     // Window control IPC
     ipcMain.on('window:minimize', () => mainWindow.minimize())
@@ -159,6 +204,9 @@ if (!gotSingleInstanceLock) {
 
 app.on('window-all-closed', () => {
   stopMonitoring()
+  // Before closeDatabase(): stopping aborts in-flight runs, and their handlers
+  // write a final job_runs row on the way out.
+  stopScheduler()
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })

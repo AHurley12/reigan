@@ -1,6 +1,7 @@
 import { getDatabase } from './database'
+import { decryptSecret, encryptSecret, isSecretKey } from './secrets'
 import { Task, TaskStatus, TaskPriority } from '../../shared/types'
-import { descriptorFor, coerceSettingValue, SECRET_KEYS } from '../../shared/settings/descriptors'
+import { findEditableSetting, validateSettingValue } from '../../shared/settingsCatalog'
 import { randomUUID } from 'crypto'
 
 // ── Tasks ──
@@ -115,23 +116,242 @@ export function createConversation(title = 'New Conversation'): string {
   return id
 }
 
+/** Returns the new row's id, so a caller can address the message it just wrote. */
 export function saveMessage(params: {
   conversationId: string
   role: 'user' | 'assistant'
   content: string
-}): void {
+  usage?: { inputTokens: number; outputTokens: number; model: string }
+}): string {
   const db = getDatabase()
   const id = randomUUID()
   const now = Date.now()
-  db.prepare('INSERT INTO messages (id, conversation_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)').run(
-    id, params.conversationId, params.role, params.content, now
+  db.prepare(
+    `INSERT INTO messages (id, conversation_id, role, content, timestamp, input_tokens, output_tokens, model)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    params.conversationId,
+    params.role,
+    params.content,
+    now,
+    params.usage?.inputTokens ?? 0,
+    params.usage?.outputTokens ?? 0,
+    params.usage?.model ?? null
   )
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, params.conversationId)
+  return id
 }
 
-export function getMessages(conversationId: string): Array<{ id: string; role: string; content: string; timestamp: number }> {
+export interface StoredMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+  usage?: { inputTokens: number; outputTokens: number; model: string }
+}
+
+export function getMessages(conversationId: string): StoredMessage[] {
   const db = getDatabase()
-  return db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC').all(conversationId) as any[]
+  // Columns named explicitly rather than `SELECT *`. The old form returned the
+  // raw row — snake_case `conversation_id` and all — behind a declared type
+  // that said otherwise, so the type was a lie the moment anything read it.
+  const rows = db
+    .prepare(
+      `SELECT id, role, content, timestamp, input_tokens, output_tokens, model
+         FROM messages
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC, rowid ASC`
+    )
+    .all(conversationId) as Array<{
+      id: string; role: string; content: string; timestamp: number
+      input_tokens: number; output_tokens: number; model: string | null
+    }>
+
+  // `rowid` breaks ties: a user turn and its reply can land in the same
+  // millisecond, and without a tiebreaker the reply can sort above the question.
+  // The `system` role is allowed by the table's CHECK but is never written and
+  // has no renderer representation, so it is filtered rather than mis-rendered.
+  return rows
+    .filter((r) => r.role === 'user' || r.role === 'assistant')
+    .map((r) => ({
+      id: r.id,
+      role: r.role as 'user' | 'assistant',
+      content: r.content,
+      timestamp: r.timestamp,
+      // Rows written before migration 18 carry 0/0 and no model. That means
+      // "never measured", not "cost nothing", so it is reported as absent.
+      usage:
+        r.model && (r.input_tokens > 0 || r.output_tokens > 0)
+          ? { inputTokens: r.input_tokens, outputTokens: r.output_tokens, model: r.model }
+          : undefined,
+    }))
+}
+
+/**
+ * Drops every message in a conversation at or after `timestamp`, and returns how
+ * many went. Used by regenerate / edit-and-resend, where the turn being replaced
+ * and everything that followed it stop being part of the conversation.
+ *
+ * Inclusive of the boundary: the resent user turn is itself replaced.
+ */
+export function deleteMessagesFrom(conversationId: string, timestamp: number): number {
+  const db = getDatabase()
+  return db
+    .prepare('DELETE FROM messages WHERE conversation_id = ? AND timestamp >= ?')
+    .run(conversationId, timestamp).changes
+}
+
+/** Previews are redacted and truncated by the caller, never here. */
+export function saveToolCalls(
+  messageId: string,
+  calls: Array<{
+    seq: number
+    name: string
+    status: 'running' | 'ok' | 'error'
+    argsPreview: string | null
+    resultPreview: string | null
+    durationMs: number | null
+  }>
+): void {
+  if (calls.length === 0) return
+  const db = getDatabase()
+  const insert = db.prepare(
+    `INSERT INTO message_tool_calls
+       (id, message_id, seq, tool_name, status, args_preview, result_preview, duration_ms, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  const now = Date.now()
+  // One transaction: a turn's tool cards are meaningless individually, and a
+  // partial write would render a reply as having done half of what it did.
+  db.transaction(() => {
+    for (const call of calls) {
+      insert.run(
+        randomUUID(), messageId, call.seq, call.name, call.status,
+        call.argsPreview, call.resultPreview, call.durationMs, now
+      )
+    }
+  })()
+}
+
+export interface StoredToolCall {
+  id: string
+  messageId: string
+  seq: number
+  name: string
+  status: 'running' | 'ok' | 'error'
+  argsPreview: string | null
+  resultPreview: string | null
+  durationMs: number | null
+}
+
+export function getToolCallsForConversation(conversationId: string): StoredToolCall[] {
+  const db = getDatabase()
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.message_id, t.seq, t.tool_name, t.status,
+              t.args_preview, t.result_preview, t.duration_ms
+         FROM message_tool_calls t
+         JOIN messages m ON m.id = t.message_id
+        WHERE m.conversation_id = ?
+        ORDER BY t.message_id, t.seq ASC`
+    )
+    .all(conversationId) as Array<{
+      id: string; message_id: string; seq: number; tool_name: string
+      status: 'running' | 'ok' | 'error'
+      args_preview: string | null; result_preview: string | null; duration_ms: number | null
+    }>
+
+  return rows.map((r) => ({
+    id: r.id,
+    messageId: r.message_id,
+    seq: r.seq,
+    name: r.tool_name,
+    status: r.status,
+    argsPreview: r.args_preview,
+    resultPreview: r.result_preview,
+    durationMs: r.duration_ms,
+  }))
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messageCount: number
+}
+
+export function listConversations(params: { limit?: number; offset?: number; search?: string } = {}): ConversationSummary[] {
+  const db = getDatabase()
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200)
+  const offset = Math.max(params.offset ?? 0, 0)
+  const search = params.search?.trim()
+
+  const where = search ? 'WHERE c.title LIKE ? ESCAPE \'\\\'' : ''
+  const args: unknown[] = search ? [`%${escapeLike(search)}%`] : []
+
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.title, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+         FROM conversations c
+         ${where}
+        ORDER BY c.updated_at DESC
+        LIMIT ? OFFSET ?`
+    )
+    .all(...args, limit, offset) as Array<{
+      id: string; title: string; created_at: number; updated_at: number; message_count: number
+    }>
+
+  return rows.map(rowToConversation)
+}
+
+export function getConversation(id: string): ConversationSummary | null {
+  const db = getDatabase()
+  const row = db
+    .prepare(
+      `SELECT c.id, c.title, c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+         FROM conversations c
+        WHERE c.id = ?`
+    )
+    .get(id) as { id: string; title: string; created_at: number; updated_at: number; message_count: number } | undefined
+
+  return row ? rowToConversation(row) : null
+}
+
+/** False when no such conversation exists, so a caller can report that honestly. */
+export function renameConversation(id: string, title: string): boolean {
+  const db = getDatabase()
+  const result = db
+    .prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?')
+    .run(title, Date.now(), id)
+  return result.changes > 0
+}
+
+/** Messages go with it: the foreign key declares ON DELETE CASCADE and
+ *  database.ts enables `foreign_keys`, so this is one statement, not two. */
+export function deleteConversation(id: string): boolean {
+  const db = getDatabase()
+  return db.prepare('DELETE FROM conversations WHERE id = ?').run(id).changes > 0
+}
+
+function rowToConversation(row: {
+  id: string; title: string; created_at: number; updated_at: number; message_count: number
+}): ConversationSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    messageCount: row.message_count,
+  }
+}
+
+/** `%` and `_` are wildcards in LIKE; a title search for "50%" must not match everything. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
 }
 
 // ── Settings ──
@@ -139,7 +359,11 @@ export function getMessages(conversationId: string): Array<{ id: string; role: s
 export function getSetting(key: string): string | null {
   const db = getDatabase()
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any
-  return row ? row.value : null
+  if (!row) return null
+  // Credential rows are encrypted at rest (see db/secrets.ts). Decryption is
+  // transparent here so every existing caller keeps working unchanged, and rows
+  // written by builds that predate encryption pass through untouched.
+  return isSecretKey(key) ? decryptSecret(row.value) : row.value
 }
 
 // Renderer settings are JSON-encoded before being sent over IPC (settingsStore.ts)
@@ -170,58 +394,105 @@ export class InvalidSettingError extends Error {
 }
 
 /**
- * Validates and normalises before persisting.
+ * Validates and normalises against the settings catalogue before persisting.
  *
- * This sits in `setSetting` rather than at the call sites because both the IPC
- * handler and the agent's `update_setting` tool write here, and a guard on only
- * one of them protects nothing — it was the agent path that saved the unusable
- * `voiceId` that silently disabled speech.
+ * The `settings.set` capability already validates, but this is the chokepoint
+ * every writer shares — the capability, the IPC handler, and anything added
+ * later — and a guard on only one path protects nothing. A `voiceId` of
+ * `zenya` was once written straight through and made every TTS call fail with
+ * `voice_not_found`, silently disabling speech; catching that here means no
+ * future caller can reintroduce it by forgetting to check.
  *
- * Secrets are exempt: the Settings UI writes API keys through this same path,
- * and `coerceSettingValue` refuses `kind: 'secret'` by design so the *agent*
- * cannot set one. Guarding them here would break the UI instead.
+ * Keys absent from the catalogue (credentials, `googleTokens`, internal rows)
+ * pass through unvalidated on purpose: the catalogue describes what the *agent*
+ * may change, and the Settings UI legitimately writes credentials through this
+ * same function.
  */
 export function setSetting(key: string, value: string): void {
-  const descriptor = descriptorFor(key)
-  if (descriptor && descriptor.kind !== 'secret') {
+  const editable = findEditableSetting(key)
+  if (editable) {
     let decoded: unknown = value
     try {
       decoded = JSON.parse(value)
     } catch {
       // Legacy unquoted row; validate the raw string as-is.
     }
-    const result = coerceSettingValue(key, decoded)
+    const result = validateSettingValue(editable, decoded)
     if (!result.ok) throw new InvalidSettingError(key, result.error)
     value = JSON.stringify(result.value)
   }
   const db = getDatabase()
-  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
+  const stored = isSecretKey(key) ? encryptSecret(value) : value
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, stored)
 }
 
 /**
- * Every stored setting, JSON-decoded, with secrets reduced to a boolean "is it
- * set". `getAllSettings()` returns raw column text, so encrypted rows come back
- * as `enc:v1:…` blobs — fine for the renderer, wrong for anything rendering a
- * summary a human or a model will read.
+ * Every setting, credentials decrypted. **Main process only.**
+ *
+ * Do not hand the result to the renderer — see `getSettingsForRenderer()`.
  */
-export function getAllDecodedSettings(): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const [key, raw] of Object.entries(getAllSettings())) {
-    if (SECRET_KEYS.has(key)) {
-      out[key] = raw !== '' && raw != null
-      continue
-    }
-    try {
-      out[key] = JSON.parse(raw)
-    } catch {
-      out[key] = raw
+export function getAllSettings(): Record<string, string> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  return Object.fromEntries(
+    rows.map((r) => [r.key, isSecretKey(r.key) ? decryptSecret(r.value) : r.value])
+  )
+}
+
+/**
+ * The renderer's view: identical, except credential values are blanked.
+ *
+ * Encrypting secrets at rest accomplishes little while the renderer is still
+ * handed the plaintext at startup — the database stops being the soft target
+ * and the renderer heap becomes one instead, reachable by any compromised
+ * dependency in the React tree. The renderer has no legitimate use for these
+ * values: it displays them masked and posts replacements back. So it gets an
+ * empty string and, separately, a preview (see `getSecretPreviews()`).
+ *
+ * Blank rather than a mask string on purpose. A mask that round-trips through
+ * a save would overwrite the real key with bullet characters; an empty value
+ * is unambiguous, and the save path already treats it as "no change".
+ */
+export function getSettingsForRenderer(): Record<string, string> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  return Object.fromEntries(rows.map((r) => [r.key, isSecretKey(r.key) ? '' : r.value]))
+}
+
+export interface SecretPreview {
+  hasValue: boolean
+  /** Last 4 characters, enough to recognise a key without disclosing it. */
+  last4: string
+}
+
+/**
+ * What the UI needs to say "a key is saved, and it ends 4f2a" without ever
+ * holding the key. Four characters is not enough to be useful to an attacker
+ * and is enough for the user to tell two of their own keys apart.
+ */
+export function getSecretPreviews(): Record<string, SecretPreview> {
+  const db = getDatabase()
+  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
+  const out: Record<string, SecretPreview> = {}
+  for (const row of rows) {
+    if (!isSecretKey(row.key)) continue
+    const plain = decryptSecret(row.value)
+    // Values arrive JSON-encoded from the renderer; strip the quotes so the
+    // preview reflects the key itself rather than a trailing `"`.
+    const unwrapped = unwrapJsonString(plain)
+    out[row.key] = {
+      hasValue: unwrapped.length > 0,
+      last4: unwrapped.length > 4 ? unwrapped.slice(-4) : '',
     }
   }
   return out
 }
 
-export function getAllSettings(): Record<string, string> {
-  const db = getDatabase()
-  const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>
-  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+function unwrapJsonString(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'string' ? parsed : raw
+  } catch {
+    return raw
+  }
 }

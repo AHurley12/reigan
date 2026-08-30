@@ -37,6 +37,14 @@ export const shinganTokens: ThemeTokens = {
     success: '#23A18C',
     gradient: 'linear-gradient(135deg, #D8432A 0%, #C9A227 100%)',
   },
+  // Vermilion, gold, jade — the skin's signature three. Vermilion and gold are
+  // the pair that would otherwise merge for a deuteranope, so the gold sits a
+  // full 0.10 OKLCH lighter than the vermilion rather than matching it.
+  chart: {
+    series1: '#C83D22',
+    series2: '#BA8C01',
+    series3: '#07957C',
+  },
   border: {
     subtle: 'rgba(237, 230, 214, 0.07)',
     strong: 'rgba(237, 230, 214, 0.14)',
@@ -64,8 +72,10 @@ export const shinganTokens: ThemeTokens = {
     specular: 'transparent',
   },
   ambient: {
-    // Shingan ships no ambient layer (its Effects returns null); the opacity
-    // records that rather than relying on the component to be empty.
+    // Shingan ships no full-viewport layer (its Effects returns null); the
+    // opacity records that rather than relying on the component to be empty.
+    // Its electricity is a panel-scoped field instead (field.ts), which these
+    // three tokens do not govern.
     layerOpacity: '0',
     layerBlend: 'normal',
     layerZ: '0',

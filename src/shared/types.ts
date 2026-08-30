@@ -3,6 +3,17 @@ export type ReiganState = 'idle' | 'listening' | 'processing' | 'speaking' | 'er
 export type AppModule = 'chat' | 'tasks' | 'files' | 'mail' | 'calendar' | 'performance' | 'automations' | 'dev';
 export type JapaneseLevel = 0 | 1 | 2; // 0=off, 1=ambient, 2=learning
 export type PersonalityMode = 'standard' | 'unbridled';
+/**
+ * How much motion the app is allowed. `system` follows the OS accessibility
+ * preference; the other two are deliberate user overrides in *either*
+ * direction.
+ *
+ * It replaces a `reducedMotion` boolean that could only ever add reduction —
+ * with the OS preference on, the in-app control did nothing at all and there
+ * was no way to see any animation in the app. An accessibility default should
+ * be respected out of the box and still be overridable by the person using it.
+ */
+export type MotionPreference = 'system' | 'reduce' | 'full';
 
 // ── Chat ──
 export interface ChatMessage {
@@ -11,14 +22,93 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   isStreaming?: boolean;
+  /** Set when the user stopped this reply mid-stream. The partial text is kept. */
+  stoppedByUser?: boolean;
+  /** Set when the turn failed. Rendered as an error block, never as model output. */
+  error?: string;
+  /** Files sent with this turn. Metadata only — the bytes stay on disk. */
+  attachments?: ChatAttachmentMeta[];
+  /** Measured, never estimated. Absent when the API reported nothing. */
+  usage?: TurnUsage;
+  /** What the agent did to produce this reply, in the order it did it. */
+  toolCalls?: ToolCallEvent[];
 }
 
-export interface Conversation {
+/** An attachment on its way to the model, before it has been stored. */
+export interface ChatAttachmentInput {
+  filename: string;
+  mimeType: string;
+  /** Raw base64, with no `data:` prefix. */
+  data: string;
+}
+
+/** A stored attachment, as the transcript renders it. Carries no bytes. */
+export interface ChatAttachmentMeta {
   id: string;
-  title: string;
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
+  messageId: string;
+  kind: 'image' | 'document';
+  mimeType: string;
+  filename: string;
+  byteSize: number;
+}
+
+export type ChatDoneReason = 'complete' | 'aborted' | 'error';
+
+/**
+ * One event on the `llm:stream` channel.
+ *
+ * A discriminated union rather than the old `{ token, done }` pair. A stopped
+ * generation has to be distinguishable from a finished one — the old shape
+ * could not say which — and token usage and tool activity have to ride the same
+ * channel later without re-plumbing preload and the renderer each time. New
+ * kinds are additive; a renderer that does not know a kind ignores it.
+ */
+/**
+ * Measured token usage for one turn, summed across every model call the agent
+ * made — a turn can run several, since the tool loop calls the model again
+ * after each result.
+ */
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Which model produced it, so a switch mid-conversation stays legible. */
+  model: string;
+}
+
+export type ToolCallStatus = 'running' | 'ok' | 'error';
+
+/**
+ * One tool the agent reached for, as the transcript shows it.
+ *
+ * Arguments and results are already redacted and truncated by main. Nothing on
+ * this type carries a raw value.
+ */
+export interface ToolCallEvent {
+  id: string;
+  /** Order within the turn, so cards render in the sequence they ran. */
+  seq: number;
+  name: string;
+  status: ToolCallStatus;
+  argsPreview: string | null;
+  resultPreview: string | null;
+  durationMs: number | null;
+}
+
+export type ChatStreamEvent =
+  | { kind: 'token'; text: string }
+  | { kind: 'tool'; call: ToolCallEvent }
+  | { kind: 'usage'; usage: TurnUsage }
+  | { kind: 'done'; reason: ChatDoneReason; message?: string };
+
+export interface ChatStreamFrame {
+  /**
+   * Identifies the send this event belongs to. The renderer drops frames from a
+   * superseded request, so a stop followed immediately by a resend cannot have
+   * the old stream's tail land in the new message.
+   */
+  requestId: string;
+  conversationId: string;
+  event: ChatStreamEvent;
 }
 
 // ── Tasks ──
@@ -41,6 +131,7 @@ export interface Task {
 // ── Settings ──
 export interface AppSettings {
   anthropicApiKey: string;
+  tavilyApiKey: string;
   japaneseLevel: JapaneseLevel;
   showFurigana: boolean;
   showRomaji: boolean;
@@ -52,10 +143,12 @@ export interface AppSettings {
   pushToTalk: boolean;
   ttsStability: number;
   ttsSimilarity: number;
+  /** Playback loudness for Reigan's voice, 0-1. Applied as a GainNode. */
+  voiceVolume: number;
   googleClientId: string;
   googleClientSecret: string;
   showOrbColumn: boolean;
-  reducedMotion: boolean;
+  motion: MotionPreference;
   audioInputDeviceId: string;
   audioOutputDeviceId: string;
   personalityMode: PersonalityMode;
@@ -64,6 +157,12 @@ export interface AppSettings {
   avatarCustomModelLabel: string;
   voiceOrbStyle: string;
   theme: string;
+  /** Anthropic model id. See shared/models.ts for the catalogue. */
+  model: string;
+  thinkingEnabled: boolean;
+  thinkingBudget: number;
+  /** null means "send the default sampling parameters" — not the same as 0. */
+  temperature: number | null;
 }
 
 // ── Voice ──
@@ -147,6 +246,24 @@ export interface FileIndexStatus {
   homeDir: string;
 }
 
+/**
+ * What a rebuild actually did. Stored on the job run record, so "it succeeded"
+ * is always accompanied by the evidence — a run that indexed 0 files is
+ * distinguishable from one that indexed 180,000.
+ */
+export interface FileIndexResult {
+  filesIndexed: number;
+  /** Rows dropped because the file no longer exists. */
+  filesPruned: number;
+  durationMs: number;
+  /** Hit the entry ceiling — the index is a truncated view of the tree. */
+  capped: boolean;
+  /** Directories the walk could not read (permissions, or deleted mid-scan). */
+  unreadableDirs: number;
+  /** This call joined a rebuild already in flight rather than starting its own. */
+  joinedExisting: boolean;
+}
+
 // ── Performance ──
 export type PerfStatus = 'good' | 'warning' | 'critical';
 
@@ -215,13 +332,10 @@ export interface PerfSample {
 }
 
 // ── Agent ──
-/** A pending edit Shingan wants to make — surfaced in the UI for approve/deny before it runs. */
-export interface AgentPermissionRequest {
-  id: string;
-  tool: string;
-  summary: string;
-  detail?: string;
-}
+// `AgentPermissionRequest` and the `agent:permission-*` channels lived here.
+// They were the retired permission gate's wire format, and nothing in the
+// preload or the renderer ever listened for them. Approvals now go through the
+// capability framework's `approval:*` channels — see PendingApproval below.
 
 // ── IPC Channel Names ──
 export const IPC = {
@@ -237,13 +351,13 @@ export const IPC = {
   // System
   SYSTEM_INFO: 'system:info',
   APP_OPEN: 'app:open',
-  // Agent
-  AGENT_PERMISSION_REQUEST: 'agent:permission-request',
-  AGENT_PERMISSION_RESPOND: 'agent:permission-respond',
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_LOAD_ALL: 'settings:load-all',
+  // Credential metadata (hasValue + last 4). The values themselves never
+  // cross to the renderer — see db/queries.ts getSettingsForRenderer().
+  SETTINGS_SECRET_PREVIEWS: 'settings:secret-previews',
   // Voice
   VOICE_START: 'voice:start',
   VOICE_STOP: 'voice:stop',
@@ -281,9 +395,187 @@ export const IPC = {
   FILES_READ_CONTENT: 'files:read-content',
   FILES_OPEN: 'files:open',
   FILES_REVEAL: 'files:reveal',
+  // Jobs — every non-success outcome the scheduler produces arrives here.
+  JOBS_NOTIFICATION: 'jobs:notification',
   // Performance
   PERF_STATIC_INFO: 'perf:static-info',
   PERF_START: 'perf:start',
   PERF_STOP: 'perf:stop',
   PERF_SAMPLE: 'perf:sample',
 } as const;
+
+// ── Automations: jobs & approvals ──
+// Shared so the renderer types the capability payloads without importing across
+// the process boundary. Mirrors main/jobs/store.ts and main/capabilities/types.ts.
+
+export type ScheduleKind = 'interval' | 'cron' | 'daily_at' | 'weekly_on' | 'manual';
+export type CatchUpPolicy = 'run_once' | 'run_all' | 'skip';
+export type RiskTier = 'read' | 'network' | 'write' | 'destructive';
+
+export type JobRunStatus =
+  | 'running' | 'success' | 'failure' | 'skipped'
+  | 'deferred' | 'awaiting_approval' | 'cancelled' | 'timeout';
+
+export type JobTriggeredBy = 'schedule' | 'manual' | 'catch_up' | 'retry' | 'approval';
+
+export interface ScheduledJob {
+  id: string;
+  name: string;
+  capabilityId: string;
+  args: unknown;
+  scheduleKind: ScheduleKind;
+  scheduleExpr: string;
+  /** Human-readable, e.g. "Daily at 04:00" — the table never shows raw cron. */
+  scheduleDescription: string;
+  nextRunAt: number | null;
+  nextRunRelative: string | null;
+  lastRunAt: number | null;
+  lastStatus: JobRunStatus | null;
+  enabled: boolean;
+  catchUpPolicy: CatchUpPolicy;
+  maxRetries: number;
+  timeoutMs: number;
+  consecutiveFailures: number;
+  disabledReason: string | null;
+  system: boolean;
+  running: boolean;
+  createdAt: number;
+}
+
+/**
+ * Why an automation is telling you something. Every value here is an outcome
+ * that is *not* a clean success — the scheduler emits one for each, so no
+ * non-success can pass without reaching the UI.
+ */
+export type JobAlertKind =
+  | 'failure'
+  | 'timeout'
+  | 'skipped'
+  | 'deferred'
+  | 'cancelled'
+  | 'awaiting_approval'
+  | 'disabled'
+  /** Succeeded, but the outcome is not what a green check implies. */
+  | 'degraded';
+
+export interface JobNotification {
+  id: string;
+  priority: 'urgent' | 'normal';
+  kind: JobAlertKind;
+  title: string;
+  body: string;
+  /** Empty for engine-level alerts that belong to no single job. */
+  jobId: string;
+  jobName: string;
+  at: number;
+}
+
+export interface JobRunRecord {
+  id: string;
+  jobId: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: JobRunStatus;
+  result: unknown;
+  error: string | null;
+  attempt: number;
+  triggeredBy: JobTriggeredBy;
+  scheduledFor: number | null;
+  approvalId: string | null;
+}
+
+export interface ApprovalDiff {
+  subject: string;
+  changes: Array<{ field: string; before: string | null; after: string | null }>;
+}
+
+export interface PendingApproval {
+  id: string;
+  capabilityId: string;
+  /** Present on a live request; absent on rows read back from the store. */
+  title?: string;
+  risk: RiskTier;
+  summary: string;
+  detail?: string;
+  diff: ApprovalDiff | null;
+  requestedBy: 'ui' | 'agent' | 'job';
+  requestedAt: number;
+}
+
+export interface CapabilityInvokeResult<T = unknown> {
+  ok: boolean;
+  result?: T;
+  error?: string;
+  errorCode?: string;
+  awaitingApprovalId?: string;
+}
+
+// ── Automations: YouTube ──
+
+export interface YtChannelStats {
+  id: string;
+  title: string;
+  customUrl: string | null;
+  subscriberCount: number;
+  viewCount: number;
+  videoCount: number;
+  thumbnailUrl: string | null;
+  syncedAt: number | null;
+}
+
+export interface YtSeriesPoint {
+  date: string;
+  views: number;
+  watchTimeMinutes: number;
+  netSubs: number;
+  /** Likes given on that day — a daily figure, not the lifetime running total
+      carried by YtVideoSummary.likeCount. */
+  likes: number;
+  /** Comments posted on that day, likewise daily rather than cumulative. */
+  comments: number;
+}
+
+export type YtPerformanceTier = 'top' | 'solid' | 'underperforming' | 'dormant';
+
+export interface YtVideoSummary {
+  id: string;
+  title: string;
+  publishedAt: number | null;
+  durationS: number | null;
+  privacyStatus: string | null;
+  thumbnailUrl: string | null;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  tags: string[];
+  descriptionLength: number;
+  hasCustomThumbnail: boolean;
+  views28: number;
+  tier: YtPerformanceTier;
+}
+
+export type YtFindingKind =
+  | 'still_earning' | 'revival_thumbnail' | 'revival_content' | 'revival_remake'
+  | 'metadata_hygiene' | 'cadence' | 'title_pattern';
+
+export interface YtAuditFinding {
+  id: string;
+  kind: YtFindingKind;
+  videoId: string | null;
+  severity: 'info' | 'suggestion' | 'important';
+  title: string;
+  detail: string;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+  lowConfidence: boolean;
+  generatedAt: number;
+}
+
+export interface YtQuotaStatus {
+  date: string;
+  used: number;
+  budget: number;
+  limit: number;
+  remaining: number;
+  calls: Record<string, number>;
+}

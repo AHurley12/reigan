@@ -4,18 +4,104 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { REIGAN_SYSTEM_PROMPT, REIGAN_UNBRIDLED_SYSTEM_PROMPT } from './prompts'
-import { createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool } from './tools/taskTools'
 import { getTimeTool, getSystemInfoTool, openAppTool } from './tools/systemTools'
 import { createCalendarTools } from './tools/calendarTools'
 import { createEmailTools } from './tools/emailTools'
 import { searchFilesTool, listDirectoryTool, readFileTool } from './tools/fileTools'
-import { getSettingsTool, updateSettingTool } from './tools/settingsTools'
 import { getPerformanceSnapshotTool } from './tools/performanceTools'
+import { buildAgentTools } from '../capabilities/agentTools'
 import { googleAuth } from '../auth/googleAuth'
-import { getDecodedSetting, getAllDecodedSettings } from '../db/queries'
-import { settingsPromptBlock } from '../../shared/settings/describe'
-import { getCachedExecutor, setCachedExecutor } from './executorCache'
-import type { PersonalityMode } from '../../shared/types'
+import { getDecodedSetting } from '../db/queries'
+import { classify } from '../../shared/attachmentPolicy'
+import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET, resolveModel, resolveRequestConfig } from '../../shared/models'
+import { serialiseArgs } from '../capabilities/audit'
+import type { ChatAttachmentInput, ChatStreamEvent, PersonalityMode } from '../../shared/types'
+
+/**
+ * Builds the human turn, with attachments as content blocks alongside the text.
+ *
+ * The block shapes are the ones @langchain/anthropic translates: `image_url`
+ * with a data URL becomes an Anthropic `image` block, and a `file` block with a
+ * base64 source and a PDF mime type becomes a `document` block. Anything the
+ * policy does not classify is dropped rather than sent in a shape the converter
+ * would throw on.
+ */
+function buildTurnMessage(text: string, attachments: ChatAttachmentInput[]): HumanMessage {
+  if (attachments.length === 0) return new HumanMessage(text)
+
+  const blocks: Record<string, unknown>[] = []
+
+  for (const attachment of attachments) {
+    const kind = classify(attachment.mimeType)
+    if (kind === 'image') {
+      blocks.push({
+        type: 'image_url',
+        image_url: { url: `data:${attachment.mimeType};base64,${attachment.data}` },
+      })
+    } else if (kind === 'document') {
+      blocks.push({
+        type: 'file',
+        source_type: 'base64',
+        mime_type: attachment.mimeType,
+        data: attachment.data,
+      })
+    }
+  }
+
+  // Text last: the question should read as being about the things above it.
+  blocks.push({ type: 'text', text })
+
+  return new HumanMessage({ content: blocks as never })
+}
+
+interface AgentConfig {
+  mode: PersonalityMode
+  model: string
+  thinkingEnabled: boolean
+  thinkingBudget: number
+  temperature: number | null
+}
+
+let executor: AgentExecutor | null = null
+/**
+ * The whole config, serialised. This used to be the personality mode alone, so
+ * changing the model, the thinking budget or the temperature left the previous
+ * executor — and therefore the previous model — in place until a restart.
+ */
+let executorKey: string | null = null
+
+/**
+ * Settings arrive JSON-encoded from the renderer (settingsStore stringifies
+ * every value), so a number is the text "4096" and an absent temperature is the
+ * text "null". Number() would turn that last one into NaN.
+ */
+function readJsonSetting<T>(key: string, fallback: T): T {
+  const raw = getDecodedSetting(key)
+  if (raw === null || raw === '') return fallback
+  try {
+    const parsed = JSON.parse(raw)
+    return (parsed as T) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function getAgentConfig(): AgentConfig {
+  const temperatureRaw = getDecodedSetting('temperature')
+  let temperature: number | null = null
+  if (temperatureRaw !== null && temperatureRaw !== '' && temperatureRaw !== 'null') {
+    const parsed = Number(temperatureRaw)
+    if (Number.isFinite(parsed)) temperature = parsed
+  }
+
+  return {
+    mode: getPersonalityMode(),
+    model: readJsonSetting('model', DEFAULT_MODEL_ID),
+    thinkingEnabled: readJsonSetting('thinkingEnabled', false),
+    thinkingBudget: readJsonSetting('thinkingBudget', DEFAULT_THINKING_BUDGET),
+    temperature,
+  }
+}
 
 function getApiKey(): string {
   return getDecodedSetting('anthropicApiKey') ?? process.env.ANTHROPIC_API_KEY ?? ''
@@ -27,14 +113,20 @@ function getPersonalityMode(): PersonalityMode {
 
 function getTools(): DynamicStructuredTool[] {
   const tools: DynamicStructuredTool[] = [
-    createTaskTool, listTasksTool, updateTaskTool, completeTaskTool, deleteTaskTool,
+    // Generated from the capability registry — the tools declared in
+    // main/capabilities/defs. `uiOnly` capabilities are excluded here by
+    // construction, which is what keeps them out of the model's context.
+    ...buildAgentTools(),
+
+    // Legacy hand-written tools, not yet migrated to the registry. New tools
+    // must be added as capabilities, not here.
     getTimeTool, getSystemInfoTool, openAppTool,
     searchFilesTool, listDirectoryTool, readFileTool,
-    getSettingsTool, updateSettingTool,
     getPerformanceSnapshotTool,
   ]
 
   // Only exposed once the user has connected a Google account (Settings).
+  // Registry capabilities handle this themselves via `requiresGoogle`.
   const googleClient = googleAuth.getClient()
   if (googleClient) {
     tools.push(...createCalendarTools(googleClient), ...createEmailTools(googleClient))
@@ -43,68 +135,85 @@ function getTools(): DynamicStructuredTool[] {
   return tools
 }
 
-function buildExecutor(apiKey: string, mode: PersonalityMode): AgentExecutor {
+function buildExecutor(apiKey: string, config: AgentConfig): AgentExecutor {
+  const model = resolveModel(config.model)
+  // Every per-model request rule — which thinking mode the model accepts,
+  // whether it accepts sampling parameters at all, and the allowlist workaround
+  // for the default path — lives in resolveRequestConfig, which is tested.
+  // See shared/models.ts.
+  const requestConfig = resolveRequestConfig({
+    model: model.id,
+    temperature: config.temperature,
+    thinkingEnabled: config.thinkingEnabled,
+    thinkingBudget: config.thinkingBudget,
+  })
+
   const llm = new ChatAnthropic({
     apiKey,
-    model: 'claude-sonnet-4-6',
+    model: model.id,
     streaming: true,
-    // claude-sonnet-4-6 isn't in @langchain/anthropic's model allowlist, so its
-    // temperature/topP defaults (1 and -1) are sent unconditionally, which the API
-    // rejects (top_p=-1 invalid, and temperature+top_p can't both be set). Explicit
-    // temperature: null clears it (JSON.stringify drops undefined), leaving topP as
-    // the only sampling param.
-    temperature: null,
-    topP: 1,
+    ...requestConfig,
+    // @langchain/anthropic 0.3.34's ThinkingConfigParam predates adaptive
+    // thinking and only types 'enabled' | 'disabled'. The library does not
+    // inspect any other value — it passes the object straight through to the
+    // API — so this cast is the types lagging the service, not a wrong request.
+    // Passing `undefined` here is identical to omitting the field: the library
+    // falls back to its own default.
+    thinking: requestConfig.thinking as never,
   })
 
   const tools = getTools()
-  const basePrompt = mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
+  const systemPrompt = config.mode === 'unbridled' ? REIGAN_UNBRIDLED_SYSTEM_PROMPT : REIGAN_SYSTEM_PROMPT
 
-  // Settings live in the prompt rather than behind get_settings alone: a tool
-  // the model has to remember to call is one it will sometimes skip, and then
-  // it answers about its own configuration from imagination. This block is
-  // rebuilt whenever a setting changes (resetExecutor).
+  // `input` is a MessagesPlaceholder rather than the ['human', '{input}'] string
+  // template it used to be. A string template runs its value through f-string
+  // formatting, which stringifies an array of content blocks into JSON — so
+  // images and PDFs arrived at the model as text describing an image.
   //
-  // settingsPromptBlock escapes braces for the f-string template; see its note.
-  const settingsBlock = settingsPromptBlock(getAllDecodedSettings())
-
-  const systemPrompt = `${basePrompt}
-
-## Your current settings
-
-These are live values read from the database, not examples. Answer questions
-about your own configuration from this list rather than guessing, and do not
-tell the user a setting is off when it is shown here as on. Change one with
-update_setting; anything marked [default] has never been explicitly set.
-
-${settingsBlock}`
-
+  // For a text-only turn the two forms are byte-identical (verified: same
+  // rendered messages, same declared inputVariables), so nothing about the
+  // existing path changes.
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
     new MessagesPlaceholder('chat_history'),
-    ['human', '{input}'],
+    new MessagesPlaceholder('input'),
     new MessagesPlaceholder('agent_scratchpad'),
   ])
 
   const agent = createToolCallingAgent({ llm, tools, prompt })
-  return new AgentExecutor({ agent, tools, maxIterations: 5 })
+
+  // Raised from 5 for web research, which spends iterations before it can even
+  // begin answering: search, read one or two results, then reply — leaving
+  // almost nothing for the local tools the model still needs in the same turn.
+  return new AgentExecutor({ agent, tools, maxIterations: 12 })
 }
 
+/**
+ * Yields `ChatStreamEvent`s rather than bare strings: the caller has to be able
+ * to tell a token apart from a terminal condition, and later phases put usage
+ * and tool activity on this same generator without changing its shape again.
+ *
+ * `signal` is threaded into the runnable config so a stop reaches the model
+ * connection itself, not just this loop — otherwise the request keeps running
+ * and keeps being billed after the user has stopped watching.
+ */
 export async function* streamResponse(
   input: string,
-  history: Array<{ role: 'user' | 'assistant'; content: string }>
-): AsyncGenerator<string> {
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  signal?: AbortSignal,
+  attachments: ChatAttachmentInput[] = []
+): AsyncGenerator<ChatStreamEvent> {
   const apiKey = getApiKey()
   if (!apiKey) {
-    yield 'No API key configured. Please add your Anthropic API key in Settings (Ctrl+,).'
+    yield { kind: 'token', text: 'No API key configured. Please add your Anthropic API key in Settings (Ctrl+,).' }
     return
   }
 
-  const mode = getPersonalityMode()
-  let executor = getCachedExecutor(mode)
-  if (!executor) {
-    executor = buildExecutor(apiKey, mode)
-    setCachedExecutor(mode, executor)
+  const config = getAgentConfig()
+  const key = JSON.stringify(config)
+  if (!executor || executorKey !== key) {
+    executor = buildExecutor(apiKey, config)
+    executorKey = key
   }
 
   const chatHistory = history.flatMap(m =>
@@ -115,36 +224,142 @@ export async function* streamResponse(
   // '/streamed_output_str/-' path (which only fires for string-typed outputs) never
   // matches. streamEvents v2 gives per-token deltas from the underlying chat model instead.
   const eventStream = executor.streamEvents(
-    { input, chat_history: chatHistory },
-    { version: 'v2' }
+    { input: [buildTurnMessage(input, attachments)], chat_history: chatHistory },
+    { version: 'v2', signal }
   )
 
   let yieldedAny = false
+  // Summed, not overwritten. maxIterations is 5, so one turn can make several
+  // model calls — the tool loop calls back after every result — and reporting
+  // only the last one would understate what the turn actually cost.
+  let inputTokens = 0
+  let outputTokens = 0
+
+  // Tool runs, keyed by LangChain's run id so start and end can be paired.
+  const openTools = new Map<string, { seq: number; startedAt: number }>()
+  let toolSeq = 0
 
   for await (const event of eventStream) {
+    if (event.event === 'on_tool_start') {
+      toolSeq += 1
+      openTools.set(event.run_id, { seq: toolSeq, startedAt: Date.now() })
+      yield {
+        kind: 'tool',
+        call: {
+          id: event.run_id,
+          seq: toolSeq,
+          name: event.name ?? 'tool',
+          status: 'running',
+          // Redacted here, in main, before it crosses IPC. Doing it in the
+          // renderer would mean the raw value had already left the process.
+          argsPreview: serialiseArgs(event.data?.input),
+          resultPreview: null,
+          durationMs: null,
+        },
+      }
+      continue
+    }
+
+    if (event.event === 'on_tool_end' || event.event === 'on_tool_error') {
+      const open = openTools.get(event.run_id)
+      openTools.delete(event.run_id)
+      const failed = event.event === 'on_tool_error'
+      yield {
+        kind: 'tool',
+        call: {
+          id: event.run_id,
+          seq: open?.seq ?? ++toolSeq,
+          name: event.name ?? 'tool',
+          status: failed ? 'error' : 'ok',
+          argsPreview: null,
+          // `error` is only present on the error variant, which LangChain's
+          // StreamEventData union does not narrow for us here.
+          resultPreview: truncatePreview(
+            failed ? (event.data as { error?: unknown })?.error : event.data?.output
+          ),
+          durationMs: open ? Date.now() - open.startedAt : null,
+        },
+      }
+      continue
+    }
+
+    if (event.event === 'on_chat_model_end') {
+      const usage = readUsage(event.data?.output)
+      inputTokens += usage.input
+      outputTokens += usage.output
+      continue
+    }
+
     if (event.event !== 'on_chat_model_stream') continue
     const content = event.data?.chunk?.content
 
     if (typeof content === 'string') {
       if (content) {
         yieldedAny = true
-        yield content
+        yield { kind: 'token', text: content }
       }
     } else if (Array.isArray(content)) {
       for (const block of content) {
         if (block?.type === 'text' && typeof block.text === 'string' && block.text) {
           yieldedAny = true
-          yield block.text
+          yield { kind: 'token', text: block.text }
         }
       }
     }
   }
 
-  if (!yieldedAny) {
-    yield "I didn't have a response for that — try rephrasing."
+  // Reported only when the API actually said something. An estimate here would
+  // be indistinguishable on screen from a measurement, and wrong.
+  if (inputTokens > 0 || outputTokens > 0) {
+    yield { kind: 'usage', usage: { inputTokens, outputTokens, model: resolveModel(config.model).id } }
+  }
+
+  // A stop is not an empty answer. Without this check the "try rephrasing" line
+  // would be appended to whatever the user had already stopped, which reads as
+  // the assistant talking back after being interrupted.
+  if (!yieldedAny && !signal?.aborted) {
+    yield { kind: 'token', text: "I didn't have a response for that — try rephrasing." }
   }
 }
 
-// Re-exported so existing callers (ipc/system.ts) keep their import path while
-// the cache itself lives in a module the tools can reach without a cycle.
-export { resetExecutor } from './executorCache'
+/** A shell command's output can be 100KB. That must not cross IPC or sit in React state. */
+const MAX_RESULT_PREVIEW = 600
+
+function truncatePreview(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  let text: string
+  try {
+    text = typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return '[unserialisable]'
+  }
+  if (!text) return null
+  return text.length > MAX_RESULT_PREVIEW ? `${text.slice(0, MAX_RESULT_PREVIEW)}…[truncated]` : text
+}
+
+/**
+ * Pulls token counts off a finished model call.
+ *
+ * LangChain has carried these under two names across versions, so both are
+ * read. Anything missing counts as zero rather than throwing — a usage number
+ * is worth having but never worth failing a reply over.
+ */
+function readUsage(output: unknown): { input: number; output: number } {
+  const message = output as
+    | {
+        usage_metadata?: { input_tokens?: number; output_tokens?: number }
+        response_metadata?: { usage?: { input_tokens?: number; output_tokens?: number } }
+      }
+    | undefined
+
+  const meta = message?.usage_metadata ?? message?.response_metadata?.usage
+  return {
+    input: Number(meta?.input_tokens) || 0,
+    output: Number(meta?.output_tokens) || 0,
+  }
+}
+
+export function resetExecutor(): void {
+  executor = null
+  executorKey = null
+}

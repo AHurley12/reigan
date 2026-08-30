@@ -17,9 +17,15 @@ interface Props {
   isActive: boolean
   onClick: () => void
   shortcut?: string
+  /** Unresolved-item count. Omitted or 0 renders nothing. */
+  badge?: number
+  /** What the badge counts, for the tooltip and the accessible name. */
+  badgeLabel?: string
 }
 
-export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shortcut }: Props) {
+export function NavItem({
+  id: _id, icon, en, ja, romaji, isActive, onClick, shortcut, badge = 0, badgeLabel,
+}: Props) {
   const [showTooltip, setShowTooltip] = useState(false)
   const japaneseLevel = useSettingsStore((s) => s.settings.japaneseLevel)
   const showFurigana = useSettingsStore((s) => s.settings.showFurigana)
@@ -38,7 +44,7 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
         // The breathing room is the rail's own px-2 instead.
         className="relative w-full flex items-center justify-center h-10 rounded-sm transition-colors duration-fast"
         style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}
-        aria-label={en}
+        aria-label={badge > 0 && badgeLabel ? `${en} — ${badge} ${badgeLabel}` : en}
         aria-current={isActive}
       >
         {isActive && (
@@ -55,6 +61,29 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
         )}
         <span className="relative z-10">{icon}</span>
       </button>
+
+      {/* Count, not a bare dot: "3 automations broke" and "1 did" warrant
+          different levels of alarm, and the rail is the only place the user sees
+          either without opening the tab. Static by design — animation in this app
+          is gated on `prefers-reduced-motion`, so a pip that relied on a pulse to
+          be noticed would be invisible to exactly the users who set that. */}
+      {badge > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 z-20 pointer-events-none
+            min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full
+            font-mono text-[9px] leading-none tabular-nums"
+          style={{
+            background: 'var(--status-error)',
+            color: 'var(--bg-base)',
+            // Reads as a pip sitting on the rail rather than a smudge inside the
+            // button, which matters most when the active hanko is lit behind it.
+            border: '1px solid var(--bg-surface)',
+          }}
+          aria-hidden
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
 
       {showTooltip && (
         <div
@@ -75,6 +104,11 @@ export function NavItem({ id: _id, icon, en, ja, romaji, isActive, onClick, shor
           )}
           {japaneseLevel >= 1 && showRomaji && !withFurigana && (
             <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{romaji}</span>
+          )}
+          {badge > 0 && badgeLabel && (
+            <span style={{ color: 'var(--status-error)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+              {badge} {badgeLabel}
+            </span>
           )}
           {shortcut && (
             <span className="mt-1 px-1.5 py-0.5 rounded text-center"

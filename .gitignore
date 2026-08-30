@@ -11,4 +11,17 @@ out/
 # bloat, and two of the three are near GitHub per-file limits. Set up Git LFS
 # if these need to be versioned.
 src/renderer/public/models/
-.settings-check/
+
+# Agent worktrees are separate checkouts of this repo — never a submodule of it.
+.claude/worktrees/
+
+# Isolated Electron profile for dev runs — keeps test migrations out of the real DB.
+.devdata/
+
+# SQLite sidecars. `*.db` above does not match these — the WAL and shared-memory
+# files carry a suffix, so they slipped through and were committed on the
+# devtools branch (a 1.4MB WAL). They hold uncheckpointed page data from a
+# developer's local database and are meaningless in version control.
+*.db-wal
+*.db-shm
+*.db-journal

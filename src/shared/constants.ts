@@ -1,4 +1,5 @@
 import type { TaskStatus, ReiganState, FileTypeCategoryId } from './types';
+import { DEFAULT_MODEL_ID, DEFAULT_THINKING_BUDGET } from './models';
 
 export const APP_NAME = 'Shingan';
 export const APP_NAME_JP = '心眼';
@@ -24,6 +25,7 @@ export const BASE_WINDOW_MIN_HEIGHT = 600;
 
 export const DEFAULT_SETTINGS = {
   anthropicApiKey: '',
+  tavilyApiKey: '',
   japaneseLevel: 1 as const,
   showFurigana: true,
   showRomaji: true,
@@ -35,10 +37,11 @@ export const DEFAULT_SETTINGS = {
   pushToTalk: true,
   ttsStability: 0.7,
   ttsSimilarity: 0.75,
+  voiceVolume: 1,
   googleClientId: '',
   googleClientSecret: '',
   showOrbColumn: true,
-  reducedMotion: false,
+  motion: 'system' as const,
   audioInputDeviceId: 'default',
   audioOutputDeviceId: 'default',
   personalityMode: 'standard' as const,
@@ -47,6 +50,13 @@ export const DEFAULT_SETTINGS = {
   avatarCustomModelLabel: '',
   voiceOrbStyle: 'nebula',
   theme: 'shingan',
+  model: DEFAULT_MODEL_ID,
+  thinkingEnabled: false,
+  thinkingBudget: DEFAULT_THINKING_BUDGET,
+  // null, not a number: "leave sampling alone" is a distinct state from any
+  // temperature the user could pick, and it is the one that reproduces the
+  // request the app sent before the picker existed. See resolveSampling.
+  temperature: null as number | null,
 };
 
 /**
@@ -100,13 +110,103 @@ export function taskStatusLabel(status: TaskStatus, japaneseLevel: number): stri
 }
 
 // ── Files ──
+/**
+ * Extension → category map for the Files panel's type tabs.
+ *
+ * Modelled on the Windows shell's own taxonomy so the tabs agree with what the
+ * OS would say about the same file:
+ *
+ *  - `PerceivedType` (HKCR\.ext) groups extensions into broad buckets — Text,
+ *    Image, Audio, Video, Compressed, Document, Folder. Documents here merges
+ *    Text + Document; Media merges Audio + Video, as consumer file managers do.
+ *  - `System.Kind` (the KindMap registry) is the user-facing version of the
+ *    same idea, and it is the reason folders are not listed below: Folder is
+ *    its own Kind, a *sibling* of document/picture/music/video rather than a
+ *    member of each. `kind:=picture` in Explorer returns no folders, and the
+ *    same holds here — folders appear under All only. See `categorizeEntry`.
+ *
+ * The lists are deliberately broad. The classic failure of this design is the
+ * one Windows itself hit with .divx/.flv missing from `kind:video`: a plausible
+ * extension nobody registered silently lands in Other and the filter looks
+ * broken. constants.test.ts pins the mapping and forbids duplicates.
+ */
 export const FILE_TYPE_CATEGORIES: Array<{ id: FileTypeCategoryId; en: string; ja: string; exts?: string[] }> = [
   { id: 'all', en: 'All', ja: '全て' },
-  { id: 'documents', en: 'Documents', ja: '文書', exts: ['pdf', 'doc', 'docx', 'txt', 'md', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'] },
-  { id: 'images', en: 'Images', ja: '画像', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'heic', 'tiff', 'ico'] },
-  { id: 'code', en: 'Code', ja: 'コード', exts: ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'html', 'css', 'scss', 'json', 'yml', 'yaml', 'sql', 'sh', 'ps1'] },
-  { id: 'media', en: 'Media', ja: 'メディア', exts: ['mp3', 'mp4', 'wav', 'mov', 'avi', 'mkv', 'flac', 'm4a', 'wmv', 'ogg'] },
-  { id: 'archives', en: 'Archives', ja: '圧縮', exts: ['zip', 'rar', '7z', 'tar', 'gz'] },
+  {
+    id: 'documents',
+    en: 'Documents',
+    ja: '文書',
+    exts: [
+      // Word processing / PDF / plain text
+      'pdf', 'doc', 'docx', 'docm', 'dot', 'dotx', 'odt', 'ott', 'rtf', 'wpd', 'txt', 'text',
+      'md', 'markdown', 'rst', 'tex', 'log', 'nfo',
+      // Spreadsheets
+      'xls', 'xlsx', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv',
+      // Presentations
+      'ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'odp',
+      // E-books, notes, fixed-layout
+      'epub', 'mobi', 'azw3', 'djvu', 'xps', 'oxps', 'one',
+      // Apple iWork
+      'pages', 'numbers', 'key',
+    ],
+  },
+  {
+    id: 'images',
+    en: 'Images',
+    ja: '画像',
+    exts: [
+      'png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'webp', 'avif', 'jxl',
+      'svg', 'svgz', 'bmp', 'dib', 'heic', 'heif', 'tif', 'tiff', 'ico', 'cur', 'tga',
+      // Editable / raw formats
+      'psd', 'xcf', 'ai', 'eps', 'raw', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf',
+    ],
+  },
+  {
+    id: 'code',
+    en: 'Code',
+    ja: 'コード',
+    exts: [
+      // General-purpose languages
+      'ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'py', 'pyw', 'ipynb',
+      'java', 'kt', 'kts', 'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'hh', 'cs', 'go', 'rs',
+      'rb', 'php', 'swift', 'm', 'mm', 'scala', 'dart', 'lua', 'pl', 'pm', 'r', 'jl',
+      'ex', 'exs', 'erl', 'hs', 'clj', 'cljs', 'vb', 'fs', 'asm', 's',
+      // Markup and styling
+      'html', 'htm', 'xhtml', 'css', 'scss', 'sass', 'less', 'styl',
+      'vue', 'svelte', 'astro',
+      // Data, config, schema
+      'json', 'jsonc', 'json5', 'yml', 'yaml', 'toml', 'xml', 'ini', 'cfg', 'conf',
+      'properties', 'gradle', 'cmake', 'mk',
+      // Query and interface definition
+      'sql', 'graphql', 'gql', 'proto',
+      // Shell and scripting
+      'sh', 'bash', 'zsh', 'fish', 'ps1', 'psm1', 'psd1', 'bat', 'cmd',
+    ],
+  },
+  {
+    id: 'media',
+    en: 'Media',
+    ja: 'メディア',
+    exts: [
+      // Audio
+      'mp3', 'wav', 'flac', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opus', 'wma',
+      'aiff', 'aif', 'alac', 'ape', 'mka', 'amr', '3ga', 'mid', 'midi',
+      // Video — .ts/.mts are claimed by TypeScript above, which wins in a home directory
+      'mp4', 'm4v', 'mov', 'avi', 'mkv', 'wmv', 'webm', 'flv', 'f4v', 'divx',
+      'mpeg', 'mpg', 'mpe', '3gp', '3g2', 'm2ts', 'vob', 'ogv', 'asf', 'rm', 'rmvb',
+    ],
+  },
+  {
+    id: 'archives',
+    en: 'Archives',
+    ja: '圧縮',
+    exts: [
+      'zip', 'zipx', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'tbz', 'tbz2',
+      'xz', 'txz', 'zst', 'lz', 'lzma', 'lzh', 'z', 'arj', 'ace', 'sit', 'sitx', 'cab',
+      // Disk images and zip-container formats users think of as archives
+      'iso', 'dmg', 'jar', 'war', 'whl', 'xpi',
+    ],
+  },
   { id: 'other', en: 'Other', ja: 'その他' },
 ];
 
@@ -117,4 +217,19 @@ const EXT_TO_CATEGORY: Record<string, FileTypeCategoryId> = Object.fromEntries(
 /** Classifies a lowercase, dot-free extension into a filter category (defaults to 'other'). */
 export function categorizeExt(ext: string): FileTypeCategoryId {
   return EXT_TO_CATEGORY[ext.toLowerCase()] ?? 'other';
+}
+
+/**
+ * True if an entry belongs under `category`. The single place that decides what
+ * a type tab contains, so the browse view and the indexed search cannot drift.
+ *
+ * Folders match All and nothing else — see the note on FILE_TYPE_CATEGORIES.
+ */
+export function matchesCategory(
+  entry: { ext: string; isDir: boolean },
+  category: FileTypeCategoryId
+): boolean {
+  if (category === 'all') return true;
+  if (entry.isDir) return false;
+  return categorizeExt(entry.ext) === category;
 }

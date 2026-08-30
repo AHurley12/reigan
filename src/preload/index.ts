@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type FileSearchParams } from '../shared/types'
+import { IPC, type ChatStreamFrame, type FileSearchParams, type JobNotification } from '../shared/types'
 import { authBridge } from './authBridge'
 
 // Main reads the persisted theme synchronously (better-sqlite3) before creating
@@ -26,10 +26,12 @@ const api = {
   initialThemeId,
 
   // LLM
-  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string }) =>
+  sendMessage: (payload: { message: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; conversationId?: string; requestId?: string; truncateFromTimestamp?: number; attachments?: import('../shared/types').ChatAttachmentInput[] }) =>
     ipcRenderer.invoke(IPC.LLM_SEND, payload),
-  onStream: (callback: (data: { token: string; done: boolean; conversationId: string }) => void) => {
-    const handler = (_: unknown, data: { token: string; done: boolean; conversationId: string }) => callback(data)
+  /** Stops one in-flight generation. Resolves false if it had already finished. */
+  abortMessage: (requestId: string) => ipcRenderer.invoke(IPC.LLM_ABORT, requestId),
+  onStream: (callback: (frame: ChatStreamFrame) => void) => {
+    const handler = (_: unknown, frame: ChatStreamFrame) => callback(frame)
     ipcRenderer.on(IPC.LLM_STREAM, handler)
     return () => ipcRenderer.removeListener(IPC.LLM_STREAM, handler)
   },
@@ -44,6 +46,17 @@ const api = {
   getSetting: (key: string) => ipcRenderer.invoke(IPC.SETTINGS_GET, key),
   setSetting: (key: string, value: string) => ipcRenderer.invoke(IPC.SETTINGS_SET, key, value),
   getAllSettings: () => ipcRenderer.invoke(IPC.SETTINGS_LOAD_ALL),
+  /**
+   * Fires when main changes a setting — which today means the assistant did,
+   * with the user's approval. Without it the store keeps the value it read at
+   * boot and an approved change appears to do nothing until a restart.
+   */
+  onSettingsChanged: (callback: (change: { key: string; value: unknown }) => void) => {
+    const handler = (_: unknown, change: { key: string; value: unknown }) => callback(change)
+    ipcRenderer.on('settings:changed', handler)
+    return () => ipcRenderer.removeListener('settings:changed', handler)
+  },
+  getSecretPreviews: () => ipcRenderer.invoke(IPC.SETTINGS_SECRET_PREVIEWS),
 
   // System
   getSystemInfo: () => ipcRenderer.invoke(IPC.SYSTEM_INFO),
@@ -138,6 +151,60 @@ const api = {
 
   // Voice authentication (lock screen). See preload/authBridge.ts.
   auth: authBridge,
+
+  // Capability registry — the generic surface for everything declared in
+  // main/capabilities. Deliberately *not* one bridge method per operation: a
+  // capability is reachable the moment it is registered, with no preload edit.
+  capabilities: {
+    invoke: <T = unknown>(id: string, args?: unknown, invocationId?: string) =>
+      ipcRenderer.invoke('capability:invoke', { id, args, invocationId }) as Promise<{
+        ok: boolean
+        result?: T
+        error?: string
+        errorCode?: string
+        awaitingApprovalId?: string
+      }>,
+    cancel: (invocationId: string) => ipcRenderer.invoke('capability:cancel', invocationId),
+    list: () => ipcRenderer.invoke('capability:list'),
+    onProgress: (
+      callback: (data: { invocationId: string; done: number; total: number; label?: string }) => void
+    ) => {
+      const handler = (_: unknown, data: { invocationId: string; done: number; total: number; label?: string }) =>
+        callback(data)
+      ipcRenderer.on('capability:progress', handler)
+      return () => ipcRenderer.removeListener('capability:progress', handler)
+    },
+  },
+
+  // Jobs — every non-success outcome the scheduler produces. Main has been
+  // sending on this channel since the job engine landed, but nothing bridged it,
+  // so in-app job alerts (including "automation disabled") were dropped on the
+  // floor and only the urgent ones ever surfaced, as OS toasts.
+  jobs: {
+    onNotification: (callback: (event: JobNotification) => void) => {
+      const handler = (_: unknown, event: JobNotification) => callback(event)
+      ipcRenderer.on(IPC.JOBS_NOTIFICATION, handler)
+      return () => ipcRenderer.removeListener(IPC.JOBS_NOTIFICATION, handler)
+    },
+  },
+
+  // Approvals — write-tier actions awaiting the user's decision.
+  approvals: {
+    pending: () => ipcRenderer.invoke('approvals:pending'),
+    history: (limit?: number) => ipcRenderer.invoke('approvals:history', limit),
+    resolve: (id: string, approved: boolean) =>
+      ipcRenderer.send('approval:resolve', { id, approved }),
+    onRequest: (callback: (request: unknown) => void) => {
+      const handler = (_: unknown, request: unknown) => callback(request)
+      ipcRenderer.on('approval:request', handler)
+      return () => ipcRenderer.removeListener('approval:request', handler)
+    },
+    onPendingChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('approval:pending-changed', handler)
+      return () => ipcRenderer.removeListener('approval:pending-changed', handler)
+    },
+  },
 
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),

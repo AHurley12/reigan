@@ -3,8 +3,57 @@ import type { OAuth2Client } from 'google-auth-library'
 import { createServer, type Server } from 'http'
 import { shell } from 'electron'
 import { getSetting, setSetting, getDecodedSetting } from '../db/queries'
+import { recordAppError } from '../errors/errorLog'
 
-const SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.modify']
+/**
+ * One consent screen, one token store, for every Google surface the app uses.
+ *
+ * `youtube.upload` is deliberately absent until the Content Pipeline's publish
+ * step exists — there is no reason to hold upload rights before anything can
+ * upload.
+ */
+export const SCOPES = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/youtube.readonly',
+  'https://www.googleapis.com/auth/yt-analytics.readonly',
+  // Required for metadata writes (titles, descriptions, tags).
+  'https://www.googleapis.com/auth/youtube.force-ssl',
+]
+
+/**
+ * Scopes that must never be requested, checked at module load.
+ *
+ * `gmail.send` is the one that matters: the mail automation creates drafts and
+ * nothing else, and that guarantee is worth enforcing structurally rather than
+ * trusting to review. If the scope is never granted, no bug — and no future
+ * edit made in a hurry — can send mail on the user's behalf.
+ */
+const FORBIDDEN_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/gmail.compose',
+]
+
+for (const forbidden of FORBIDDEN_SCOPES) {
+  if (SCOPES.includes(forbidden)) {
+    throw new Error(
+      `Refusing to start: "${forbidden}" is a forbidden scope. REIGAN creates Gmail drafts and never sends. ` +
+        'If sending is genuinely wanted, that is a deliberate product decision — remove it from FORBIDDEN_SCOPES explicitly.'
+    )
+  }
+}
+
+/** Scope groups, so a feature can check what it actually needs before calling. */
+export const SCOPE_GROUPS = {
+  youtube: [
+    'https://www.googleapis.com/auth/youtube.readonly',
+    'https://www.googleapis.com/auth/yt-analytics.readonly',
+    'https://www.googleapis.com/auth/youtube.force-ssl',
+  ],
+  gmail: ['https://www.googleapis.com/auth/gmail.modify'],
+  calendar: ['https://www.googleapis.com/auth/calendar'],
+} as const
 
 const TOKENS_KEY = 'googleTokens'
 const CONNECT_TIMEOUT_MS = 5 * 60 * 1000
@@ -36,8 +85,17 @@ class GoogleAuthManager {
     if (savedTokens) {
       try {
         client.setCredentials(JSON.parse(savedTokens))
-      } catch {
-        // corrupt/legacy token blob — treat as signed out
+      } catch (err) {
+        // corrupt/legacy token blob — treat as signed out. Recorded because
+        // the symptom the user gets is "I was signed out for no reason", and
+        // that is indistinguishable from an expired grant without this row.
+        recordAppError({
+          source: 'google',
+          operation: 'loadStoredTokens',
+          error: err,
+          severity: 'warning',
+          context: { consequence: 'stored Google tokens unreadable; treated as signed out' },
+        })
       }
     }
 
@@ -62,6 +120,36 @@ class GoogleAuthManager {
   getClient(): OAuth2Client | null {
     if (!this.client) this.client = this.buildClient('http://127.0.0.1')
     return this.isAuthenticated() ? this.client : null
+  }
+
+  /** Scopes actually granted by the stored token, which may lag SCOPES after an upgrade. */
+  grantedScopes(): string[] {
+    const raw = getSetting(TOKENS_KEY)
+    if (!raw) return []
+    try {
+      const scope = (JSON.parse(raw) as { scope?: string }).scope
+      return scope ? scope.split(' ') : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * True when the stored grant covers a feature's scopes.
+   *
+   * Adding YouTube scopes to an existing install does not retroactively grant
+   * them — the token predates them. Callers check this so the UI can say
+   * "reconnect to enable YouTube" rather than surfacing an opaque 403.
+   */
+  hasScopes(group: keyof typeof SCOPE_GROUPS): boolean {
+    const granted = new Set(this.grantedScopes())
+    return SCOPE_GROUPS[group].every((s) => granted.has(s))
+  }
+
+  /** Scopes this build wants that the stored grant does not cover. */
+  missingScopes(): string[] {
+    const granted = new Set(this.grantedScopes())
+    return SCOPES.filter((s) => !granted.has(s))
   }
 
   async connect(): Promise<void> {
@@ -155,5 +243,47 @@ export const googleAuth = new GoogleAuthManager()
  */
 export function isInvalidGrantError(err: unknown): boolean {
   const data = (err as { response?: { data?: { error?: string } } })?.response?.data
-  return data?.error === 'invalid_grant'
+  if (data?.error === 'invalid_grant') return true
+  // The googleapis client sometimes surfaces it only in the message.
+  const message = (err as Error)?.message ?? ''
+  return message.includes('invalid_grant')
+}
+
+/** Raised when the grant dies, so the user learns from a notification rather than an empty tab. */
+let reauthNotifier: ((message: string) => void) | null = null
+
+export function setReauthNotifier(fn: (message: string) => void): void {
+  reauthNotifier = fn
+}
+
+/**
+ * Central handling for a dead refresh token.
+ *
+ * This OAuth client is in **Testing** publishing status, where Google expires
+ * refresh tokens after 7 days. That is a deliberate, acknowledged choice, so the
+ * job engine must not treat the weekly death as a mysterious failure: every
+ * scheduled Google job routes its `invalid_grant` here, which raises one clear
+ * "reconnect your Google account" notification instead of N cryptic ones.
+ *
+ * Switching the client to Production in Google Cloud Console makes refresh
+ * tokens durable and renders this path near-dead. See docs/AUTOMATIONS_AUDIT.md.
+ */
+export function handleInvalidGrant(context: string): string {
+  const message =
+    `Google sign-in expired (${context}). Reconnect your Google account in Settings. ` +
+    'This happens weekly while the OAuth client is in "Testing" status — switching it to ' +
+    'Production in Google Cloud Console stops it.'
+  reauthNotifier?.(message)
+  // Every dead grant funnels through here, so one record covers all of them.
+  // The occurrence count is the useful part: a weekly expiry and a grant that
+  // has died four times since Tuesday look identical in a notification and
+  // completely different here.
+  recordAppError({
+    source: 'google',
+    operation: 'refreshGrant',
+    error: message,
+    subject: context,
+    context: { cause: 'invalid_grant' },
+  })
+  return message
 }

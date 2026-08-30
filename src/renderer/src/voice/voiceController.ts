@@ -4,6 +4,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useToastStore } from '../stores/toastStore'
 import { validateStoredAudioDevices } from './audioDeviceManager'
+import { computeLevels } from './playbackLevel'
 import type { ReiganState } from '../../../shared/types'
 
 let audioContext: AudioContext | null = null
@@ -11,6 +12,9 @@ let mediaStream: MediaStream | null = null
 let workletNode: AudioWorkletNode | null = null
 let muteNode: GainNode | null = null
 let playbackContext: AudioContext | null = null
+let playbackAnalyser: AnalyserNode | null = null
+let playbackGain: GainNode | null = null
+let levelRaf = 0
 let listenersInitialized = false
 let devicesValidated = false
 
@@ -128,7 +132,22 @@ function stopMicCapture(): void {
 }
 
 async function ensurePlaybackContext(): Promise<AudioContext> {
-  if (!playbackContext) playbackContext = new AudioContext({ sampleRate: 22050 })
+  if (!playbackContext) {
+    playbackContext = new AudioContext({ sampleRate: 22050 })
+    // Every scheduled chunk plays through this, so the meter sees the same
+    // signal the user hears. It sits between the sources and the destination
+    // rather than as a side branch: an AnalyserNode passes audio through
+    // unchanged, so there is no reason to split the graph.
+    playbackAnalyser = playbackContext.createAnalyser()
+    playbackAnalyser.fftSize = 512
+    playbackAnalyser.connect(playbackContext.destination)
+
+    // Sources feed the gain, the gain feeds the analyser: the meter then
+    // reports what the user actually hears rather than the pre-fader signal.
+    playbackGain = playbackContext.createGain()
+    playbackGain.gain.value = useSettingsStore.getState().settings.voiceVolume
+    playbackGain.connect(playbackAnalyser)
+  }
 
   const outputDeviceId = useSettingsStore.getState().settings.audioOutputDeviceId
   const ctxWithSink = playbackContext as AudioContext & { setSinkId?: (id: string) => Promise<void> }
@@ -141,6 +160,17 @@ async function ensurePlaybackContext(): Promise<AudioContext> {
     }
   }
   return playbackContext
+}
+
+/**
+ * Applies a volume change to audio that is already scheduled. Chunks are queued
+ * ahead of the playhead, so without this a drag mid-sentence would not be heard
+ * until the next reply. No-ops before the first playback builds the graph — the
+ * gain is read from settings when it is created.
+ */
+export function setPlaybackVolume(volume: number): void {
+  if (!playbackGain) return
+  playbackGain.gain.value = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1
 }
 
 // Electron's IPC delivers a main-process Buffer to the renderer as a Uint8Array,
@@ -156,6 +186,48 @@ let activeSources: AudioBufferSourceNode[] = []
 // IPC (the main process learns about the skip a tick later) get dropped
 // instead of resuming playback right after stopPlayback() clears it.
 let voiceSkipped = false
+
+/**
+ * Drives the orb's level meter from what's actually being spoken.
+ *
+ * Before this, the meter was fed only by the mic worklet, so during a spoken
+ * reply the bars sat frozen at their minimum height while OrbColumn still
+ * coloured them as active — the meter looked live and reported nothing.
+ *
+ * Deliberately not routed through the main process the way mic amplitude is
+ * (renderer → VOICE_AMPLITUDE → VOICE_ORB_AUDIO → renderer). The samples and
+ * the store are both already here.
+ */
+function startLevelMeter(): void {
+  if (levelRaf || !playbackAnalyser) return
+
+  // Allocated once per run rather than per frame, matching startLevelMonitor
+  // in micLevelMonitor.ts. fftSize is fixed, so the buffer can be reused.
+  const samples = new Float32Array(playbackAnalyser.fftSize)
+
+  const tick = () => {
+    if (!playbackAnalyser || activeSources.length === 0) {
+      stopLevelMeter()
+      return
+    }
+
+    playbackAnalyser.getFloatTimeDomainData(samples)
+    useVoiceStore.getState().setOrbAudio(computeLevels(samples))
+
+    levelRaf = requestAnimationFrame(tick)
+  }
+
+  levelRaf = requestAnimationFrame(tick)
+}
+
+/** Stops the meter and settles the bars at rest rather than leaving them mid-swing. */
+function stopLevelMeter(): void {
+  if (levelRaf) {
+    cancelAnimationFrame(levelRaf)
+    levelRaf = 0
+  }
+  useVoiceStore.getState().setOrbAudio({ amplitude: 0, bass: 0, mid: 0, high: 0 })
+}
 
 async function playPcm16(chunk: Uint8Array): Promise<void> {
   let bytes = chunk
@@ -181,7 +253,7 @@ async function playPcm16(chunk: Uint8Array): Promise<void> {
 
   const source = playbackContext.createBufferSource()
   source.buffer = audioBuffer
-  source.connect(playbackContext.destination)
+  source.connect(playbackGain ?? playbackAnalyser ?? playbackContext.destination)
   source.onended = () => {
     activeSources = activeSources.filter((s) => s !== source)
   }
@@ -191,6 +263,10 @@ async function playPcm16(chunk: Uint8Array): Promise<void> {
   const startAt = Math.max(playbackContext.currentTime, nextPlayTime)
   source.start(startAt)
   nextPlayTime = startAt + audioBuffer.duration
+
+  // Idempotent: chunks arrive continuously, the meter runs once until the
+  // queue drains.
+  startLevelMeter()
 }
 
 /** Immediately silences whatever's currently playing/queued. */
@@ -205,6 +281,9 @@ function stopPlayback(): void {
   activeSources = []
   nextPlayTime = playbackContext?.currentTime ?? 0
   pendingAudioByte = null
+  // Without this the bars hold their last height after a skip, which reads as
+  // still speaking.
+  stopLevelMeter()
 }
 
 export function startVoice(): void {
