@@ -24,7 +24,42 @@ export function getDatabase(): Database.Database {
     )
   }
 
+  reclaimAfterSlimming(db, result.applied)
+
   return db
+}
+
+/**
+ * Returns the pages migration 20 freed to the operating system.
+ *
+ * SQLite moves freed pages to its freelist and reuses them; it does not shrink
+ * the file. Migration 20 drops a 15.57 MB index and deletes the bulk of the
+ * rows, so without this the user's 86 MB file stays 86 MB and the reclaim is
+ * invisible — the whole point of the change was the disk.
+ *
+ * Runs here rather than inside the migration because VACUUM cannot execute
+ * inside a transaction, and the runner wraps every migration in one. Guarded on
+ * that migration actually having been applied, so this is a one-time cost on a
+ * single boot and never runs again.
+ */
+function reclaimAfterSlimming(database: Database.Database, applied: string[]): void {
+  if (!applied.some((a) => a.startsWith('20:'))) return
+
+  const pageSize = database.pragma('page_size', { simple: true }) as number
+  const before = (database.pragma('page_count', { simple: true }) as number) * pageSize
+
+  try {
+    database.exec('VACUUM')
+  } catch (err) {
+    // A failed reclaim is not a reason to refuse to start: the database is
+    // correct either way, it is merely still large.
+    console.warn('[db] VACUUM after slimming failed; file left at its current size:', err)
+    return
+  }
+
+  const after = (database.pragma('page_count', { simple: true }) as number) * pageSize
+  const mb = (n: number): string => (n / 1048576).toFixed(1)
+  console.log(`[db] reclaimed ${mb(before - after)} MB (${mb(before)} → ${mb(after)} MB)`)
 }
 
 export function closeDatabase(): void {

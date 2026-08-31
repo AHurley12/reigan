@@ -26,13 +26,37 @@ export function VoiceOrb() {
   }, [theme, reiganState])
 
   useEffect(() => {
-    if (!containerRef.current) return
+    const container = containerRef.current
+    if (!container) return
+
+    // The engine now arrives asynchronously, because its `three` dependency is
+    // no longer in the startup chunk (see engine/orbRegistry.ts).
+    let cancelled = false
+    let orb: VoiceOrbEngine | null = null
+
     const styleDef = ORB_STYLES[orbStyle] ?? ORB_STYLES[DEFAULT_ORB_STYLE]
-    const orb = styleDef.create(containerRef.current, particleCount)
-    orbRef.current = orb
+    void styleDef.load().then((create) => {
+      // Switched style, changed particle count, or unmounted while the chunk
+      // was in flight — building the engine now would leak a WebGL context
+      // whose cleanup has already run.
+      if (cancelled) return
+
+      orb = create(container, particleCount)
+      orbRef.current = orb
+
+      // The state effects below fire on change, not on mount, so an engine that
+      // finished loading after the last one has missed everything said so far.
+      // Latch the current values onto it rather than waiting for the next
+      // transition, which for an idle app may never come.
+      orb.setState(useAppStore.getState().reiganState)
+      orb.setThrottled(useAppStore.getState().reiganState === 'listening')
+      orb.setAudioData(useVoiceStore.getState().orbAudio)
+    })
+
     return () => {
-      orb.dispose()
-      orbRef.current = null
+      cancelled = true
+      orb?.dispose()
+      if (orbRef.current === orb) orbRef.current = null
     }
   }, [particleCount, orbStyle])
 

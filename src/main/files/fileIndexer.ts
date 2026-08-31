@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { join, resolve, extname, basename, dirname, sep } from 'path'
 import { app } from 'electron'
 import { getDatabase } from '../db/database'
+import { isExcludedDir } from './excludedDirs'
 import { FILE_TYPE_CATEGORIES } from '../../shared/constants'
 import type {
   FileEntry,
@@ -19,22 +20,8 @@ function getRootDir(): string {
 }
 
 // Matched by directory *name* at any depth, so this also catches nested copies
-// (e.g. a project's own node_modules). AppData and the legacy Windows profile
-// junctions are excluded outright — mostly app config/cache/credentials, not
-// the user's own files, and junctions can otherwise loop.
-const EXCLUDED_DIR_NAMES = new Set([
-  'AppData', 'Application Data', 'Cookies', 'Local Settings', 'My Documents',
-  'NetHood', 'PrintHood', 'Recent', 'SendTo', 'Templates', 'Start Menu', 'History',
-  'node_modules', 'dist', 'build', 'out', '.next', '.nuxt', '.cache', '.turbo', '.parcel-cache',
-  'venv', '.venv', '__pycache__', '.tox',
-  '$RECYCLE.BIN', 'System Volume Information',
-])
-
-// Hidden (dot-prefixed) directories are skipped wholesale — covers .git, .ssh,
-// .aws, .gnupg, etc. without needing an exhaustive denylist of secret locations.
-function isExcludedDir(name: string): boolean {
-  return name.startsWith('.') || EXCLUDED_DIR_NAMES.has(name)
-}
+// (e.g. a project's own node_modules). See files/excludedDirs.ts — the list
+// lives there so nothing has to keep a second copy of it in step.
 
 const MAX_INDEXED_ENTRIES = 250_000
 const YIELD_EVERY = 300
@@ -195,6 +182,15 @@ async function doFullIndex(): Promise<FileIndexResult> {
 
   const db = getDatabase()
   const scanStart = Date.now()
+  // AUDIT-DEBT(files_index): `path` is just `dir` + `name` joined, and it is the
+  // most expensive column in the database — 15.15 MB of payload plus a 17.55 MB
+  // UNIQUE autoindex backing this ON CONFLICT, ~32.7 MB of pure redundancy on a
+  // 125k-row index. `UNIQUE(dir, name)` gives the identical guarantee for a
+  // fraction of it. Deferred, not forgotten: it is a table rebuild with FTS
+  // triggers attached and external callers reading `path`, so it wants its own
+  // migration and its own tests rather than being tacked onto migration 20.
+  // Measurements and reasoning are in that migration's comment. Revisit at the
+  // next audit; grep AUDIT-DEBT.
   const upsert = db.prepare(`
     INSERT INTO files_index (path, name, dir, ext, size, mtime, is_dir, indexed_at)
     VALUES (@path, @name, @dir, @ext, @size, @mtime, @is_dir, @indexed_at)

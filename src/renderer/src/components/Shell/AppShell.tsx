@@ -8,7 +8,15 @@ import { MailPanel } from '../Mail/MailPanel'
 import { FilesPanel } from '../Files/FilesPanel'
 import { PerformancePanel } from '../Performance/PerformancePanel'
 import { AutomationsPanel } from '../Automations/AutomationsPanel'
-import { OrbColumn } from '../Orb/OrbColumn'
+// Lazy for one measured reason: `three` is 1,358 KB of the 2,608 KB startup
+// chunk — 52% of it, against 455 KB for the whole of this app's own UI. The
+// orb column is the only path that reaches three (OrbColumn → AvatarPanel /
+// VoiceOrb → the engines), and it is already conditional on a setting, so
+// splitting here takes half the cold-start bundle off the boot path and gives
+// it to the people who actually switch the orb on.
+const OrbColumn = lazy(() =>
+  import('../Orb/OrbColumn').then((m) => ({ default: m.OrbColumn }))
+)
 import { RegionParticles } from '../../theme/particles/RegionParticles'
 import { ToastStack } from '../shared/Toast'
 import { ApprovalDialog } from '../Approvals/ApprovalDialog'
@@ -128,7 +136,13 @@ export function AppShell() {
           <RegionParticles region="main" />
           {renderModule()}
         </main>
-        {showOrbColumn && <OrbColumn />}
+        {showOrbColumn && (
+          // No visible fallback: the orb fading in a moment after the shell is
+          // far less jarring than a placeholder box that then swaps.
+          <Suspense fallback={null}>
+            <OrbColumn />
+          </Suspense>
+        )}
       </div>
       <ToastStack />
       {/* Global: a write-tier action can be requested from any tab, or by a

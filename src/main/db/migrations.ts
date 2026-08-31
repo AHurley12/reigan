@@ -955,6 +955,72 @@ export const MIGRATIONS: Migration[] = [
       `)
     },
   },
+
+  {
+    version: 20,
+    name: 'files-index-slimming',
+    // Measured, not guessed. On a real profile the database had reached 86 MB,
+    // and 98.4% of it was this one feature:
+    //
+    //   files_index         36.60 MB   idx_files_dir   15.57 MB
+    //   path autoindex      17.55 MB   files_fts_data   6.33 MB
+    //   everything else      1.31 MB   ← all YouTube, chat, jobs, vault
+    //
+    // Two independent problems, fixed here together because both reclaim pages
+    // and one VACUUM should serve them (see db/database.ts).
+    //
+    // 1. `idx_files_dir` was never read. Every query in the app filters on ext,
+    //    is_dir, mtime, indexed_at, or the FTS name index; not one filters,
+    //    joins, groups or orders by `dir`. It cost 15.57 MB and a B-tree write
+    //    on all 125k rows of every rescan, and returned nothing.
+    //
+    // 2. Cache trees were being indexed. 89,180 `.dvcc` files — 71% of every
+    //    row — sat under one video-editor cache directory. Deleted here rather
+    //    than left for the next rescan's sweep, so the space comes back on this
+    //    boot instead of whenever a full scan next happens.
+    //
+    // The directory names below are a deliberate FROZEN COPY of CACHE_DIR_NAMES
+    // from files/excludedDirs.ts. Normally duplicating a list like that is the
+    // bug, not the fix — but a shipped migration must keep doing exactly what
+    // it did the day it shipped, so it must not follow a list that grows later.
+    // The indexer reads the living list; this reads its snapshot.
+    //
+    // AUDIT-DEBT(files_index): `path` is `dir` + `name` concatenated, and costs
+    // 15.15 MB of payload plus a 17.55 MB UNIQUE autoindex — ~32.7 MB of pure
+    // redundancy. Replacing it with UNIQUE(dir, name) gives the identical
+    // guarantee. Deferred: it is a table rebuild with FTS triggers and external
+    // callers reading `path`, so it needs its own migration and its own tests.
+    // Revisit at the next audit.
+    up: (db) => {
+      db.exec('DROP INDEX IF EXISTS idx_files_dir')
+
+      const frozenCacheDirNames = [
+        'CacheClip',
+        'Cache', 'Caches', 'CachedData', 'cache2',
+        'GPUCache', 'ShaderCache', 'Code Cache', 'DawnCache', 'GrShaderCache',
+        'CrashDumps', 'Crashpad',
+        'Thumbnails', 'thumbnails',
+      ]
+
+      // Matched as a whole path *segment*, so a directory merely named
+      // "Cache Notes" survives while ".../CacheClip/..." does not.
+      //
+      // Deliberately instr() over LIKE. On Windows the path separator is a
+      // backslash, which is also LIKE's conventional ESCAPE character — the
+      // pattern for "a segment named Cache" then needs the separator escaped
+      // against itself, and gets silently wrong in a way that matches nothing.
+      // Bracketing both sides with separators instead needs no escaping at all
+      // and says exactly what it means.
+      //
+      // The DELETE fires files_index_ad, which keeps the FTS index consistent
+      // without a rebuild.
+      const purge = db.prepare(
+        `DELETE FROM files_index
+          WHERE instr('\\' || replace(dir, '/', '\\') || '\\', '\\' || ? || '\\') > 0`
+      )
+      for (const name of frozenCacheDirNames) purge.run(name)
+    },
+  },
 ]
 
 /** Applies every migration newer than the database's recorded `user_version`. */
