@@ -1,6 +1,7 @@
 import { net, powerMonitor } from 'electron'
 import { getCapability, invokeCapability } from '../capabilities/registry'
 import {
+  clearJobFailures,
   dueJobs,
   earliestNextRun,
   finishRun,
@@ -486,6 +487,64 @@ function disableJob(job: Job, reason: string): void {
     jobId: job.id,
     jobName: job.name,
   })
+}
+
+/**
+ * The text every dead-grant disable carries, from `handleInvalidGrant()`.
+ *
+ * Matched on the reason string rather than an error code because that is what
+ * survives into `disabled_reason` — the code is long gone by the time a job is
+ * switched off. Kept narrow on purpose: it must not match a job that failed for
+ * some other reason and happens to mention Google.
+ */
+const DEAD_GRANT_REASON = /Google sign-in expired/i
+
+/**
+ * Brings back the jobs a dead Google grant switched off, after a reconnect.
+ *
+ * While the OAuth client is in "Testing" status Google expires the refresh
+ * token every 7 days. Each Google job then failed its way through its retry
+ * budget and disabled itself, which is right in isolation — but reconnecting
+ * did not undo any of it, so the daily sync stayed off until someone noticed
+ * the data had gone stale. The weekly expiry is survivable; the permanent stop
+ * afterwards is what made it look like the feature had broken for good.
+ *
+ * Deliberately narrow. Only jobs disabled *by that specific failure* come back:
+ * a job the user switched off by hand stays off, and one that broke on
+ * something a new token cannot fix stays off rather than burning its retries
+ * again. Returns the names it resumed.
+ */
+export function resumeGoogleJobsAfterReconnect(now = Date.now()): string[] {
+  const resumed: string[] = []
+
+  for (const job of listJobs()) {
+    if (job.enabled) continue
+    if (!job.disabledReason || !DEAD_GRANT_REASON.test(job.disabledReason)) continue
+
+    setJobEnabled(job.id, true, null)
+    // The streak is what disabled it. Left in place, the next single failure
+    // would be instantly terminal — see jobs/reenable.test.ts.
+    clearJobFailures(job.id)
+    setNextRun(
+      job.id,
+      job.scheduleKind === 'manual'
+        ? null
+        : nextOccurrence(job.scheduleKind, job.scheduleExpr, now)
+    )
+    resumed.push(job.name)
+  }
+
+  if (resumed.length > 0) {
+    notify({
+      kind: 'resumed',
+      title: `${resumed.length} automation(s) resumed`,
+      body:
+        `Reconnecting your Google account brought back: ${resumed.join(', ')}. ` +
+        'They had been disabled when the sign-in expired.',
+    })
+  }
+
+  return resumed
 }
 
 /**

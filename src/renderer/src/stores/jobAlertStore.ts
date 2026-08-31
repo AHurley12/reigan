@@ -70,6 +70,7 @@ export function alertVariant(kind: JobAlertKind): 'error' | 'warning' | 'info' {
       return 'warning'
     case 'deferred':
     case 'awaiting_approval':
+    case 'resumed':
     default:
       return 'info'
   }
@@ -85,4 +86,5 @@ export const ALERT_KIND_LABEL: Record<JobAlertKind, string> = {
   awaiting_approval: 'Needs approval',
   disabled: 'Disabled',
   degraded: 'Completed with problems',
+  resumed: 'Resumed',
 }

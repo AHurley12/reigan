@@ -3,6 +3,7 @@ import { getDatabase } from '../db/database'
 import { CapabilityError, type CapabilityContext } from '../capabilities/types'
 import { analyticsCall, getYouTubeClients, isoDate, meteredCall, parseDuration } from './api'
 import { assertBudget, getQuotaStatus } from './quota'
+import { recordAppError } from '../errors/errorLog'
 
 /**
  * Channel sync.
@@ -31,6 +32,8 @@ export interface SyncResult {
   videosSynced: number
   statsRowsWritten: number
   trafficRowsWritten: number
+  /** Videos Google would not return analytics for. The rest of the sync still ran. */
+  analyticsFailures: number
   quotaUnitsUsed: number
   incremental: boolean
   durationMs: number
@@ -183,9 +186,6 @@ export async function syncChannel(
   const startDate = new Date(endDate)
   startDate.setDate(startDate.getDate() - (incremental ? INCREMENTAL_OVERLAP_DAYS : INITIAL_HISTORY_DAYS))
 
-  let statsRowsWritten = 0
-  let trafficRowsWritten = 0
-
   const upsertStat = db.prepare(DAILY_STATS_UPSERT_SQL)
 
   const upsertTraffic = db.prepare(
@@ -194,41 +194,148 @@ export async function syncChannel(
      ON CONFLICT(video_id, date, source_type) DO UPDATE SET views = excluded.views`
   )
 
-  for (const [i, videoId] of videoIds.entries()) {
-    throwIfCancelled()
-    ctx.onProgress?.({
-      done: i,
-      total: videoIds.length,
-      label: `Analytics ${i + 1}/${videoIds.length}`,
-    })
-
-    statsRowsWritten += await syncVideoDailyStats(
-      analytics,
-      upsertStat,
-      db,
-      videoId,
-      isoDate(startDate),
-      isoDate(endDate)
-    )
-    trafficRowsWritten += await syncVideoTraffic(
-      analytics,
-      upsertTraffic,
-      db,
-      videoId,
-      isoDate(startDate),
-      isoDate(endDate)
-    )
-  }
+  const analyticsPass = await syncAnalyticsWindow(
+    videoIds,
+    async (videoId) => ({
+      stats: await syncVideoDailyStats(
+        analytics,
+        upsertStat,
+        db,
+        videoId,
+        isoDate(startDate),
+        isoDate(endDate)
+      ),
+      traffic: await syncVideoTraffic(
+        analytics,
+        upsertTraffic,
+        db,
+        videoId,
+        isoDate(startDate),
+        isoDate(endDate)
+      ),
+    }),
+    {
+      throwIfCancelled,
+      onProgress: (i) =>
+        ctx.onProgress?.({
+          done: i,
+          total: videoIds.length,
+          label: `Analytics ${i + 1}/${videoIds.length}`,
+        }),
+    }
+  )
 
   return {
     channelTitle: channel.snippet?.title ?? '',
     videosSynced,
-    statsRowsWritten,
-    trafficRowsWritten,
+    statsRowsWritten: analyticsPass.statsRows,
+    trafficRowsWritten: analyticsPass.trafficRows,
+    analyticsFailures: analyticsPass.failedVideoIds.length,
     quotaUnitsUsed: getQuotaStatus().used - quotaBefore,
     incremental,
     durationMs: Date.now() - startedAt,
   }
+}
+
+export interface AnalyticsWindowResult {
+  statsRows: number
+  trafficRows: number
+  /** Videos Google would not answer for. Their existing rows are left alone. */
+  failedVideoIds: string[]
+}
+
+/**
+ * The per-video analytics pass, with one video's failure isolated from the rest.
+ *
+ * Written as its own function, taking the per-video work as an argument, so the
+ * decision this file gets wrong most expensively — *which* failures are worth
+ * abandoning the run for — is testable without standing up a YouTube client.
+ *
+ * The balance it strikes: a video Google will not answer for is skipped and
+ * recorded, because 199 videos' worth of fresh numbers should not be lost to the
+ * 200th. A failure that will repeat identically on every remaining video is
+ * rethrown at once, because grinding through 200 doomed requests to arrive at
+ * the same error wastes minutes and buries the one message that helps.
+ */
+export async function syncAnalyticsWindow(
+  videoIds: string[],
+  perVideo: (videoId: string) => Promise<{ stats: number; traffic: number }>,
+  hooks: { throwIfCancelled?: () => void; onProgress?: (index: number) => void } = {}
+): Promise<AnalyticsWindowResult> {
+  let statsRows = 0
+  let trafficRows = 0
+  const failedVideoIds: string[] = []
+  let lastErrorText: string | null = null
+
+  for (const [i, videoId] of videoIds.entries()) {
+    hooks.throwIfCancelled?.()
+    hooks.onProgress?.(i)
+
+    try {
+      const { stats, traffic } = await perVideo(videoId)
+      statsRows += stats
+      trafficRows += traffic
+    } catch (err) {
+      if (isSystemicAnalyticsFailure(err)) throw err
+
+      failedVideoIds.push(videoId)
+      lastErrorText = (err as Error)?.message ?? String(err)
+      // Recorded rather than logged: the occurrence count is what distinguishes
+      // one video that broke last night from one that has been failing every
+      // night for a fortnight, and only the error log keeps that.
+      recordAppError({
+        source: 'youtube',
+        operation: 'videoAnalytics',
+        error: err,
+        subject: videoId,
+        severity: 'warning',
+        context: {
+          consequence: 'this video kept its previous stats; the rest of the sync continued',
+        },
+      })
+    }
+  }
+
+  // The catch-all for a systemic failure that `isSystemicAnalyticsFailure` does
+  // not recognise — a metric Google renames, most likely. Reporting a sync that
+  // wrote nothing as a success is how the `impressions` regression stayed
+  // invisible for two days while the audit quietly lost its CTR findings.
+  if (videoIds.length > 0 && failedVideoIds.length === videoIds.length) {
+    throw new CapabilityError(
+      `YouTube Analytics failed for all ${videoIds.length} videos. The channel and video ` +
+        'details were still updated. Last error: ' +
+        `${lastErrorText ?? 'unknown'}`,
+      'handler_failed'
+    )
+  }
+
+  return { statsRows, trafficRows, failedVideoIds }
+}
+
+/**
+ * True when a failure will repeat identically on every remaining video, so the
+ * run should stop rather than isolate it.
+ *
+ * Matched on message text as well as error code because these arrive from
+ * `googleapis` as prose — the disabled-API failure in particular carries its own
+ * enablement link, which is the only actionable part and is worth surfacing on
+ * the first video rather than the last.
+ */
+export function isSystemicAnalyticsFailure(err: unknown): boolean {
+  const code = (err as { code?: string })?.code
+  if (code === 'not_connected' || code === 'cancelled' || code === 'offline') return true
+
+  const message = (err as Error)?.message ?? String(err)
+  return [
+    /has not been used in project/i, // API disabled for the project
+    /accessNotConfigured/i,
+    /SERVICE_DISABLED/i,
+    /\bis disabled\b/i,
+    /quotaExceeded/i,
+    /dailyLimitExceeded/i,
+    /rateLimitExceeded/i,
+    /insufficientPermissions/i,
+  ].some((pattern) => pattern.test(message))
 }
 
 /**

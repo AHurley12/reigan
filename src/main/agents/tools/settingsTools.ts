@@ -1,12 +1,24 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { getAllSettings, setSetting } from '../../db/queries'
+import { SECRET_SETTING_KEYS } from '../../db/secrets'
 import { withPermission } from './permission'
 
 // Credentials never flow through chat — an agent that can read or overwrite
 // its own API keys is a prompt-injection risk, and rotating them belongs in
 // the Settings UI where the user is looking directly at what they're typing.
-const SECRET_KEYS = new Set(['anthropicApiKey', 'tavilyApiKey', 'deepgramApiKey', 'elevenLabsApiKey', 'googleClientId', 'googleClientSecret'])
+//
+// Derived from the storage layer's list rather than retyped. This was a
+// hand-maintained copy, and it had already drifted: `googleTokens` was added to
+// db/secrets.ts when credentials gained encryption at rest but never here, so
+// `get_settings` read the blob back out, decrypted, and handed the model a live
+// Google *refresh* token in plaintext — into the transcript and any log of it.
+// Deriving means a future credential is masked the day it is declared one.
+//
+// `googleClientId` is added on top: db/secrets.ts deliberately excludes it
+// because it travels in the consent URL and is not confidential, but the model
+// still has no use for it, and it is the other half of the client credentials.
+const SECRET_KEYS = new Set<string>([...SECRET_SETTING_KEYS, 'googleClientId'])
 
 // Every non-secret key in AppSettings (shared/types.ts) — kept as an explicit
 // allowlist rather than "everything except SECRET_KEYS" so a future secret

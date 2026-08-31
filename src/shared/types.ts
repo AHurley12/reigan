@@ -456,7 +456,9 @@ export type JobAlertKind =
   | 'awaiting_approval'
   | 'disabled'
   /** Succeeded, but the outcome is not what a green check implies. */
-  | 'degraded';
+  | 'degraded'
+  /** An auto-disabled job was brought back after its cause was fixed. */
+  | 'resumed';
 
 export interface JobNotification {
   id: string;

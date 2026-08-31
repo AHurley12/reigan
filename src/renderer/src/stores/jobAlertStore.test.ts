@@ -29,6 +29,7 @@ const KIND_PRESENCE: Record<JobAlertKind, true> = {
   awaiting_approval: true,
   disabled: true,
   degraded: true,
+  resumed: true,
 }
 const ALL_KINDS = Object.keys(KIND_PRESENCE) as JobAlertKind[]
 

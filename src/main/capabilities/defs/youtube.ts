@@ -63,7 +63,10 @@ export const youtubeCapabilities: AnyCapability[] = [
     formatResult: (r: Awaited<ReturnType<typeof syncChannel>>) =>
       `Synced ${r.channelTitle}: ${r.videosSynced} videos, ${r.statsRowsWritten} daily stat rows, ` +
       `${r.quotaUnitsUsed} quota units used, in ${(r.durationMs / 1000).toFixed(1)}s ` +
-      `(${r.incremental ? 'incremental' : 'full'}).`,
+      `(${r.incremental ? 'incremental' : 'full'})` +
+      // Stated rather than swallowed: a sync that skipped 30 videos is a
+      // different event from a clean one, and the numbers above look identical.
+      `${r.analyticsFailures > 0 ? `. Analytics unavailable for ${r.analyticsFailures} video(s), which kept their previous figures` : ''}.`,
   },
 
   {

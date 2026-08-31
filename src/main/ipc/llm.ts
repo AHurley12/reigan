@@ -8,6 +8,7 @@ import { streamResponse } from '../agents/reigan'
 import { saveMessage, saveToolCalls, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
 import { voiceManager } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
+import { describeToolInputFailure } from '../errors/toolInput'
 import { setApprovalConversation } from '../capabilities/approval'
 
 /**
@@ -122,11 +123,20 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       // The user sees this once, inline in the transcript, and then it scrolls
       // away. A console line is not a record on a packaged build where nobody
       // has a terminal open.
+      // A tool-schema rejection is recorded under the tool that was rejected.
+      // LangChain's message names no tool, so left as-is every such failure
+      // fingerprinted onto one anonymous row — see errors/toolInput.ts.
+      const toolFailure = describeToolInputFailure(err)
       recordAppError({
         source: 'llm',
-        operation: 'streamResponse',
-        error: err,
-        context: { conversationId: convId, historyLength: history.length },
+        operation: toolFailure ? 'toolInput' : 'streamResponse',
+        error: toolFailure ? toolFailure.message : err,
+        subject: toolFailure?.toolName,
+        context: {
+          conversationId: convId,
+          historyLength: history.length,
+          ...(toolFailure ? { rejectedInput: toolFailure.input } : {}),
+        },
       })
       // Sent as a terminal reason rather than as a token. An error appended to
       // the transcript as text is indistinguishable from model output, gets
