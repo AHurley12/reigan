@@ -19,9 +19,11 @@ export function DevToolsPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <SectionHeader en="Dev Tools" ja="開発" romaji="kaihatsu" />
+      <div className="rule-b flex items-center justify-between px-6 py-4 shrink-0">
+        <SectionHeader en="Dev Tools" ja="開発" romaji="kaihatsu" />
+      </div>
 
-      <div className="flex items-center gap-1 px-4 pb-2 shrink-0">
+      <div className="rule-b px-6 py-2 flex gap-1 shrink-0 overflow-x-auto">
         {DEVTOOLS_SECTIONS.map((section) => {
           const Icon = section.icon
           const isActive = section.id === activeId
@@ -29,14 +31,10 @@ export function DevToolsPanel() {
             <button
               key={section.id}
               onClick={() => setActiveId(section.id)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-xs transition-colors"
-              style={{
-                background: isActive
-                  ? 'color-mix(in srgb, var(--accent-primary) 18%, transparent)'
-                  : 'transparent',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                border: `1px solid ${isActive ? 'var(--reigan-primary)' : 'transparent'}`,
-              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs whitespace-nowrap transition-colors ${
+                isActive ? 'bg-tint/10 text-txt-primary' : 'text-txt-muted hover:text-txt-secondary'
+              }`}
+              aria-current={isActive ? 'page' : undefined}
             >
               <Icon size={13} />
               {section.labelEn}
@@ -50,7 +48,7 @@ export function DevToolsPanel() {
         })}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4">
+      <div className="flex-1 min-h-0 overflow-hidden px-6 py-4">
         <Suspense
           fallback={
             <div className="flex flex-col gap-2 pt-2">
