@@ -1,6 +1,8 @@
 import { SpeechToText } from './speechToText'
 import { TextToSpeech } from './textToSpeech'
-import { prepareForSpeech } from './prepareSpeech'
+import { planSpeech } from './prepareSpeech'
+import { describeTtsFailure } from './ttsError'
+import { recordAppError } from '../errors/errorLog'
 
 // Failsafe: if ElevenLabs stalls mid-stream (hung connection, runaway
 // generation) instead of erroring outright, don't let the app sit in
@@ -113,31 +115,56 @@ export class VoiceManager {
     }
     this.tts.setVoiceSettings(config.stability ?? 0.7, config.similarityBoost ?? 0.75)
 
-    // Speak only the text the user will actually see, in one language —
-    // strips markdown and the bilingual (romaji/English) gloss so the model
-    // isn't asked to pronounce the same idea twice in different scripts.
-    const { text: speechText, languageCode } = prepareForSpeech(text)
-    if (!speechText) return
+    // Markdown, tables and the romaji gloss are stripped; each language gets
+    // its own language-locked request, and long replies are split at sentence
+    // boundaries rather than cut off.
+    const segments = planSpeech(text)
+    if (segments.length === 0) return
 
     this.speakCancelled = false
     this.callbacks?.onStateChange('speaking')
     try {
-      const stream = this.tts.speakStream(speechText, languageCode)
-      while (true) {
-        const { value: chunk, done } = await withTimeout(stream.next(), TTS_CHUNK_TIMEOUT_MS)
-        if (done) break
-        if (this.speakCancelled) {
-          await stream.return?.(undefined)
-          break
+      // Sequential, not parallel: ElevenLabs delivers far faster than real
+      // time, so the next request completes while the previous segment is
+      // still playing out of the renderer's queue.
+      for (let i = 0; i < segments.length && !this.speakCancelled; i++) {
+        const { text: segmentText, languageCode } = segments[i]
+        const neighbour = (j: number) =>
+          segments[j]?.languageCode === languageCode ? segments[j].text : undefined
+        const stream = this.tts.speakStream(segmentText, languageCode, {
+          previousText: neighbour(i - 1),
+          nextText: neighbour(i + 1),
+        })
+        while (true) {
+          const { value: chunk, done } = await withTimeout(stream.next(), TTS_CHUNK_TIMEOUT_MS)
+          if (done) break
+          if (this.speakCancelled) {
+            await stream.return?.(undefined)
+            break
+          }
+          this.callbacks?.onAudio(chunk)
         }
-        this.callbacks?.onAudio(chunk)
       }
     } catch (err) {
-      const statusCode = (err as { statusCode?: number; status?: number })?.statusCode ?? (err as { status?: number })?.status
-      const message =
-        statusCode === 402
-          ? 'ElevenLabs rejected this request (402) — either this voice isn\'t included in your plan, or you\'re out of character quota. Try a different voice in Settings, or check your ElevenLabs account.'
-          : (err as Error).message
+      const { statusCode, message } = describeTtsFailure(err)
+
+      // Recorded here rather than left to the caller. `speak()` reports a
+      // failure through onError and then returns normally, so the promise
+      // resolves and a `.catch()` on it never runs — which is why a spoken
+      // reply could fail on every attempt and leave the error log empty. The
+      // one failure mode most worth having a trail for had none.
+      recordAppError({
+        source: 'voice',
+        operation: 'speak',
+        error: err instanceof Error ? err : new Error(message),
+        severity: 'warning',
+        context: {
+          statusCode: statusCode ?? null,
+          voiceId: this.ttsVoiceId ?? null,
+          consequence: 'reply was shown but not spoken',
+        },
+      })
+
       this.callbacks?.onError(new Error(message))
       this.callbacks?.onStateChange('error')
       return

@@ -1,9 +1,15 @@
 import { ElevenLabsClient } from 'elevenlabs'
 
-// Hard ceiling on a single TTS call. A runaway/hallucinating LLM response
-// fed wholesale into ElevenLabs is the other half of the "possessed rambling"
-// failure mode — this failsafe truncates it instead of speaking all of it.
+// Hard ceiling on a single TTS call. `planSpeech` already splits replies into
+// much smaller sentence-aligned segments; this only guards a caller that
+// bypasses it.
 const MAX_TTS_CHARS = 2000
+
+/** Neighbouring text, so a reply split across requests keeps one continuous delivery. */
+export interface SpeechContext {
+  previousText?: string
+  nextText?: string
+}
 
 export class TextToSpeech {
   private client: ElevenLabsClient
@@ -26,11 +32,19 @@ export class TextToSpeech {
    * it guess per-segment, which is what caused mid-sentence language
    * switches and mispronunciation on bilingual text.
    */
-  async *speakStream(text: string, languageCode: 'ja' | 'en' = 'en'): AsyncGenerator<Buffer> {
+  async *speakStream(
+    text: string,
+    languageCode: 'ja' | 'en' = 'en',
+    context: SpeechContext = {}
+  ): AsyncGenerator<Buffer> {
     const clipped = text.length > MAX_TTS_CHARS ? text.slice(0, MAX_TTS_CHARS) : text
 
     const audioStream = await this.client.textToSpeech.convertAsStream(this.voiceId, {
       text: clipped,
+      // Conditioning only — not spoken. Without it each segment starts with a
+      // fresh "first sentence" intonation and the joins are audible.
+      previous_text: context.previousText,
+      next_text: context.nextText,
       model_id: 'eleven_turbo_v2_5', // Slightly slower than flash, notably more consistent
       output_format: 'pcm_22050', // Raw PCM for Web Audio playback
       language_code: languageCode, // Only Turbo/Flash v2.5 support enforcing this — locks output to one language
