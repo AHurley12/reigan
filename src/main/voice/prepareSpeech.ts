@@ -148,9 +148,9 @@ function splitByScript(text: string): SpeechSegment[] {
   return segments
 }
 
-function capTotal(segments: SpeechSegment[]): SpeechSegment[] {
+function capTotal(segments: SpeechSegment[], limit: number): SpeechSegment[] {
   const out: SpeechSegment[] = []
-  let budget = MAX_TOTAL_CHARS
+  let budget = limit
   for (const seg of segments) {
     if (seg.text.length <= budget) {
       out.push(seg)
@@ -170,8 +170,8 @@ function capTotal(segments: SpeechSegment[]): SpeechSegment[] {
 }
 
 /**
- * Reduces an LLM response to the ordered list of requests ElevenLabs should
- * speak.
+ * Reduces an LLM response — or, while it streams, one completed piece of it —
+ * to the ordered list of requests ElevenLabs should speak.
  *
  * A Japanese-dominant reply stays Japanese throughout, with glosses dropped.
  * An English-dominant reply — the usual shape of a lesson — speaks each
@@ -179,7 +179,10 @@ function capTotal(segments: SpeechSegment[]): SpeechSegment[] {
  * rather than forcing the phrase through the English model, which mangles it,
  * or replacing it with the translation, which removes the thing being taught.
  */
-export function planSpeech(raw: string): SpeechSegment[] {
+export function planSpeech(raw: string, budget: number = MAX_TOTAL_CHARS): SpeechSegment[] {
+  // `budget` is what remains of MAX_TOTAL_CHARS when a reply is spoken in
+  // pieces as it streams, so the cap still applies to the reply as a whole.
+  if (budget <= 0) return []
   let text = stripMarkdown(raw)
 
   // Decide dominant language from the text outside any parenthetical gloss —
@@ -208,5 +211,5 @@ export function planSpeech(raw: string): SpeechSegment[] {
       ? [{ text: tidy(text, 'ja'), languageCode: 'ja' as const }].filter((s) => s.text)
       : splitByScript(text)
 
-  return capTotal(segments).flatMap((seg) => chunk(seg.text).map((t) => ({ text: t, languageCode: seg.languageCode })))
+  return capTotal(segments, budget).flatMap((seg) => chunk(seg.text).map((t) => ({ text: t, languageCode: seg.languageCode })))
 }

@@ -6,7 +6,7 @@ import { saveAttachments } from '../files/attachmentStore'
 import { deriveConversationTitle } from '../../shared/conversationTitle'
 import { streamResponse } from '../agents/reigan'
 import { saveMessage, saveToolCalls, createConversation, deleteMessagesFrom, getSetting, getDecodedSetting } from '../db/queries'
-import { voiceManager } from '../voice/voiceManager'
+import { voiceManager, type SpokenReply } from '../voice/voiceManager'
 import { recordAppError } from '../errors/errorLog'
 import { setApprovalConversation } from '../capabilities/approval'
 
@@ -91,12 +91,34 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     // set would make the *next* typed reply speak out of nowhere.
     const wasVoiceInput = voiceManager.consumeExpectSpokenReply()
 
+    // Decided before generation rather than after it: the reply is spoken
+    // while it streams, so the voice reads along with the transcript instead
+    // of starting once the whole answer is already on screen.
+    const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
+    const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)
+    const elevenLabsApiKey = shouldSpeak ? getDecodedSetting('elevenLabsApiKey') ?? '' : ''
+    const voiceId = shouldSpeak ? getDecodedSetting('voiceId') ?? undefined : undefined
+    let spokenReply: SpokenReply | null = null
+    if (shouldSpeak) {
+      const stabilityRaw = Number(getSetting('ttsStability'))
+      const similarityRaw = Number(getSetting('ttsSimilarity'))
+      spokenReply = voiceManager.beginSpokenReply({
+        elevenLabsApiKey,
+        voiceId,
+        stability: Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5,
+        similarityBoost: Number.isFinite(similarityRaw) ? similarityRaw : 0.75,
+      })
+    }
+
     try {
       // Only this turn's attachments are sent. Replaying every historical image
       // on every subsequent turn would multiply cost silently and fill the
       // context window with files the question is no longer about.
       for await (const event of streamResponse(message, history, controller.signal, attachments)) {
-        if (event.kind === 'token') fullResponse += event.text
+        if (event.kind === 'token') {
+          fullResponse += event.text
+          spokenReply?.push(event.text)
+        }
         if (event.kind === 'usage') turnUsage = event.usage
         if (event.kind === 'tool') {
           const previous = toolCalls.get(event.call.id)
@@ -113,11 +135,14 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       // An abort surfaces here as a thrown AbortError. It is a user action, not
       // a fault: it must not be logged as an app error or shown as a failure.
       if (controller.signal.aborted) {
+        spokenReply?.cancel()
         persistPartial(convId, fullResponse)
         emit({ kind: 'done', reason: 'aborted' })
         return { conversationId: convId, requestId }
       }
 
+      // Stop talking about an answer that failed partway.
+      spokenReply?.cancel()
       console.error('[REIGAN] streamResponse failed:', err)
       // The user sees this once, inline in the transcript, and then it scrolls
       // away. A console line is not a record on a packaged build where nobody
@@ -145,12 +170,39 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
     // A stop can land between the last token and here, in which case the catch
     // above never ran because the generator finished cleanly first.
     if (controller.signal.aborted) {
+      spokenReply?.cancel()
       persistPartial(convId, fullResponse)
       emit({ kind: 'done', reason: 'aborted' })
       return { conversationId: convId, requestId }
     }
 
     emit({ kind: 'done', reason: 'complete' })
+
+    // Before the database writes, so a failed save cannot leave the last
+    // sentence of the reply waiting forever to be spoken.
+    if (spokenReply) {
+      // Not `.catch(() => {})`. Speech failing while the reply is already on
+      // screen is the definition of a failure with no symptom: the answer is
+      // there, it simply never spoke, and the user is left thinking the voice
+      // feature is broken with nothing to point at. Still swallowed as far as
+      // control flow goes — a dead TTS key must not break the reply — but no
+      // longer unrecorded.
+      spokenReply.finish().catch((err) => {
+        recordAppError({
+          source: 'voice',
+          operation: 'speak',
+          error: err,
+          severity: 'warning',
+          context: {
+            conversationId: convId,
+            hasKey: !!elevenLabsApiKey,
+            voiceId: voiceId ?? null,
+            consequence: 'reply was shown but not spoken',
+          },
+        })
+      })
+    }
+
     const assistantMessageId = saveMessage({
       conversationId: convId,
       role: 'assistant',
@@ -158,40 +210,6 @@ export function registerLLMHandlers(mainWindow: BrowserWindow): void {
       usage: turnUsage,
     })
     saveToolCalls(assistantMessageId, [...toolCalls.values()].sort((a, b) => a.seq - b.seq))
-
-    const voiceResponseMode = getDecodedSetting('voiceResponseMode') ?? 'conversational'
-    const shouldSpeak = voiceResponseMode === 'always' || (voiceResponseMode === 'conversational' && wasVoiceInput)
-
-    if (shouldSpeak) {
-      const elevenLabsApiKey = getDecodedSetting('elevenLabsApiKey') ?? ''
-      const voiceId = getDecodedSetting('voiceId') ?? undefined
-      const stabilityRaw = Number(getSetting('ttsStability'))
-      const similarityRaw = Number(getSetting('ttsSimilarity'))
-      const stability = Number.isFinite(stabilityRaw) ? stabilityRaw : 0.5
-      const similarityBoost = Number.isFinite(similarityRaw) ? similarityRaw : 0.75
-      // Not `.catch(() => {})`. Speech failing while the reply is already on
-      // screen is the definition of a failure with no symptom: the answer is
-      // there, it simply never spoke, and the user is left thinking the voice
-      // feature is broken with nothing to point at. Still swallowed as far as
-      // control flow goes — a dead TTS key must not break the reply — but no
-      // longer unrecorded.
-      voiceManager
-        .speak(fullResponse, { elevenLabsApiKey, voiceId, stability, similarityBoost })
-        .catch((err) => {
-          recordAppError({
-            source: 'voice',
-            operation: 'speak',
-            error: err,
-            severity: 'warning',
-            context: {
-              conversationId: convId,
-              hasKey: !!elevenLabsApiKey,
-              voiceId: voiceId ?? null,
-              consequence: 'reply was shown but not spoken',
-            },
-          })
-        })
-    }
 
     return { conversationId: convId, requestId }
   })
