@@ -1,4 +1,4 @@
-import React, { useRef, useState, KeyboardEvent } from 'react'
+import React, { useLayoutEffect, useRef, useState, KeyboardEvent } from 'react'
 import { Send, Mic, Square, Flame, CircleStop, Paperclip, FileText, Image as ImageIcon, X, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useChatStore } from '../../stores/chatStore'
@@ -10,6 +10,31 @@ import { resolveModel } from '../../../../shared/models'
 
 /** Mirrors the policy, so the picker cannot offer what the policy would refuse. */
 const ACCEPT = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOCUMENT_TYPES].join(',')
+
+/** How tall the composer may grow before it scrolls instead. */
+const MAX_VISIBLE_LINES = 3
+
+/**
+ * Sizes the composer to its content, from one line up to MAX_VISIBLE_LINES,
+ * then lets it scroll. Measured from the computed style rather than hardcoded
+ * pixels, so a theme that changes the font, padding or frame width still gets
+ * exactly three lines.
+ */
+function fitToContent(el: HTMLTextAreaElement) {
+  const cs = getComputedStyle(el)
+  const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.25
+  const chrome =
+    parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) +
+    parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+  const max = lineHeight * MAX_VISIBLE_LINES + chrome
+  // Collapse first, or scrollHeight can never report less than the current
+  // height and the box would grow but never shrink back.
+  el.style.height = 'auto'
+  // scrollHeight covers padding but not border; the box is border-box.
+  const wanted = el.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+  el.style.height = `${Math.min(wanted, max)}px`
+  el.style.overflowY = wanted > max ? 'auto' : 'hidden'
+}
 
 interface Props {
   onSend: (text: string, attachments?: PendingAttachment[]) => void
@@ -41,6 +66,24 @@ export function InputBar({ onSend, inputRef }: Props) {
   // drafted while this one is still answering.
   const micDisabled = reiganState === 'processing'
 
+  // Re-fit when the composer's width changes — a window resize or the
+  // Unbridled badge appearing rewraps the same text onto a different number
+  // of lines. Only width is watched: fitting changes the height, and reacting
+  // to that would just repeat the same answer.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    fitToContent(el)
+    let lastWidth = el.offsetWidth
+    const observer = new ResizeObserver(() => {
+      if (el.offsetWidth === lastWidth) return
+      lastWidth = el.offsetWidth
+      fitToContent(el)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref, isUnbridled])
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends and Shift+Enter newlines — the chat convention, and the
     // muscle memory this app already had. Ctrl/Cmd+Enter is accepted as an
@@ -61,7 +104,10 @@ export function InputBar({ onSend, inputRef }: Props) {
     if ((val || attachments.length > 0) && !isStreaming) {
       onSend(val ?? '', attachments)
       clear()
-      if (ref.current) ref.current.value = ''
+      if (ref.current) {
+        ref.current.value = ''
+        fitToContent(ref.current)
+      }
     }
   }
 
@@ -132,6 +178,7 @@ export function InputBar({ onSend, inputRef }: Props) {
         <textarea
           ref={ref}
           onKeyDown={handleKeyDown}
+          onInput={(e) => fitToContent(e.currentTarget)}
           onPaste={handlePaste}
           placeholder="Ask Shingan anything… (Enter to send, Shift+Enter for newline)"
           rows={1}
@@ -139,13 +186,13 @@ export function InputBar({ onSend, inputRef }: Props) {
             placeholder:text-txt-muted text-txt-primary
             focus:outline-none transition-colors duration-fast
             disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ fontFamily: 'var(--font-body)', maxHeight: '120px', paddingRight: isUnbridled ? 84 : undefined }}
+          style={{ fontFamily: 'var(--font-body)', overflowY: 'hidden', paddingRight: isUnbridled ? 84 : undefined }}
         />
         {isUnbridled && (
           <button
             onClick={() => setSettingsOpen(true)}
             title="Unbridled Mode is active — click to open Settings"
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-opacity hover:opacity-80"
+            className="absolute right-2 bottom-[9px] flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-opacity hover:opacity-80"
             style={{ background: 'color-mix(in srgb, var(--accent-primary) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-primary) 35%, transparent)', color: 'var(--reigan-primary)' }}
           >
             <Flame size={10} />
